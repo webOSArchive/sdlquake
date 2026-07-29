@@ -4,6 +4,8 @@
 #include "quakedef.h"
 #include "d_local.h"
 #include "pdl.h"
+#include "in_evdev.h"
+// key_dest (used by the menu-aware touch overlay) comes from keys.h via quakedef.h
 
 viddef_t    vid;                // global video state
 unsigned short  d_8to16table[256];
@@ -130,17 +132,23 @@ void    VID_Init (unsigned char *palette)
     flags = (SDL_SWSURFACE|SDL_HWPALETTE);
     if ( COM_CheckParm ("-fullscreen") )
         flags |= SDL_FULLSCREEN;
+#ifdef __webos__
+    // Always fullscreen on the TouchPad: the compositor scales our 480x320
+    // buffer to the panel, and a fullscreen app keeps the backlight on -- which
+    // is what stops a Bluetooth gamepad session dying to display-sleep churn
+    // (see the hardware-accessories knowledge doc).
+    flags |= SDL_FULLSCREEN;
+#endif
 
 
     // Initialize display 
     if (!(screen = SDL_SetVideoMode(vid.width, vid.height, 32, flags)))
         Sys_Error("VID: Couldn't set video mode: %s\n", SDL_GetError());
 
-    //Initialize PDL and set orientation
-    //if ( PDL_Init( 0 ) != PDL_NOERROR )
-    //    Sys_Error( "Failed to initialize PDL!\n" );
-    if ( PDL_SetOrientation( PDL_ORIENTATION_LEFT != PDL_NOERROR ) )
-        Sys_Error( "Failed to set orientation!\n" );
+    //Lock the display to landscape. (Was a bug: the "!= PDL_NOERROR" was inside
+    //the call, so it passed a bool as the orientation and errored on success.)
+    if ( PDL_SetOrientation( PDL_ORIENTATION_LEFT ) != PDL_NOERROR )
+        Con_Printf( "PDL: failed to set orientation\n" );
     PDL_CustomPauseUiEnable( PDL_FALSE );
 
     //create buffer where we do the rendering
@@ -375,6 +383,57 @@ void D_EndDirectRect (int x, int y, int width, int height)
 }
 
 
+/* ===========================================================================
+ * Menu-aware touch overlay
+ *   Quake menus only act on K_ENTER / K_ESCAPE / arrow keys. The on-screen
+ *   overlay normally sends K_MOUSE1 (fire) + analog joystick, none of which a
+ *   menu understands -- so a touch-only player could reach the menu but never
+ *   SELECT anything. When key_dest isn't key_game we reinterpret the overlay:
+ *     FIRE button  -> Enter (select)
+ *     JUMP / top    -> Escape (back / open-close menu)
+ *     joystick drag -> one arrow-key step per push (menu navigation)
+ * ======================================================================== */
+static int menu_btn_key = 0;    // menu key currently held by a touch button
+static int menu_joy_dir = 0;    // last arrow emitted by the joystick-as-dpad
+
+static void Menu_TouchDown( int x, int y )
+{
+    int key = 0;
+    if ( x > vid.width - FIRE_SIZE && y > vid.height - FIRE_SIZE )
+        key = K_ENTER;                 // fire button -> select
+    else if ( y < JUMP_SIZE )
+        key = K_ESCAPE;                // top / jump  -> back
+    if ( key ) { menu_btn_key = key; Key_Event( key, true ); }
+}
+
+static void Menu_TouchUp( void )
+{
+    if ( menu_btn_key ) { Key_Event( menu_btn_key, false ); menu_btn_key = 0; }
+}
+
+// Treat the on-screen joystick as a d-pad: emit one arrow step when the drag
+// enters a new direction, re-arming only after it returns toward center.
+static void Menu_JoyStep( int x, int y )
+{
+    int cx  = JOY_X;
+    int cy  = (int)JOY_Y;
+    int dx  = x - cx, dy = y - cy;
+    int adx = dx < 0 ? -dx : dx;
+    int ady = dy < 0 ? -dy : dy;
+    int dir = 0;
+
+    if ( adx > JOY_DEAD * 3 || ady > JOY_DEAD * 3 )
+    {
+        if ( ady >= adx ) dir = ( dy < 0 ) ? K_UPARROW : K_DOWNARROW;
+        else              dir = ( dx < 0 ) ? K_LEFTARROW : K_RIGHTARROW;
+    }
+    if ( dir != menu_joy_dir )
+    {
+        if ( dir ) { Key_Event( dir, true ); Key_Event( dir, false ); }
+        menu_joy_dir = dir;
+    }
+}
+
 /*
 ================
 Sys_SendKeyEvents
@@ -600,6 +659,12 @@ void Sys_SendKeyEvents(void)
                 break;
 
             case SDL_MOUSEBUTTONUP:
+                if ( key_dest != key_game )
+                {
+                    Menu_TouchUp();
+                    menu_joy_dir = 0;
+                    break;
+                }
                 if ( event.motion.y > vid.height - JOY_SIZE &&
                      event.motion.x < JOY_SIZE )
                 {
@@ -609,7 +674,14 @@ void Sys_SendKeyEvents(void)
 
                 //fall through
             case SDL_MOUSEBUTTONDOWN:
-                
+
+                if ( key_dest != key_game )
+                {
+                    if ( event.type == SDL_MOUSEBUTTONDOWN )
+                        Menu_TouchDown( event.button.x, event.button.y );
+                    break;
+                }
+
                 if ( event.motion.x > vid.width - FIRE_SIZE &&
                         event.motion.y > vid.height - FIRE_SIZE )
                 {
@@ -626,7 +698,16 @@ void Sys_SendKeyEvents(void)
             case SDL_MOUSEMOTION:
                 //printf( "MOUSE: %d, %d\n", event.motion.xrel, event.motion.yrel );
 
-                if ( mousedown && 
+                if ( key_dest != key_game )
+                {
+                    // joystick corner acts as a menu d-pad
+                    if ( event.motion.y > vid.height - JOY_SIZE &&
+                         event.motion.x < JOY_SIZE )
+                        Menu_JoyStep( event.motion.x, event.motion.y );
+                    break;
+                }
+
+                if ( mousedown &&
                         event.motion.y > vid.height - JOY_SIZE &&
                         event.motion.x < JOY_SIZE )
                 {
@@ -687,7 +768,7 @@ void Sys_SendKeyEvents(void)
 
             case SDL_QUIT:
                 CL_Disconnect ();
-                Host_ShutdownServer(false);        
+                Host_ShutdownServer(false);
                 Sys_Quit ();
                 break;
             default:
@@ -695,10 +776,19 @@ void Sys_SendKeyEvents(void)
         }
 
     }
+
+#ifdef __webos__
+    // Fold in USB/Bluetooth controllers and physical keyboards (direct evdev);
+    // they inject Key_Event()s just like the SDL path above.
+    IN_Evdev_Poll();
+#endif
 }
 
 void IN_Init (void)
 {
+#ifdef __webos__
+    IN_Evdev_Init();
+#endif
     if ( COM_CheckParm ("-nomouse") )
         return;
     mouse_x = mouse_y = 0.0;
@@ -708,6 +798,9 @@ void IN_Init (void)
 
 void IN_Shutdown (void)
 {
+#ifdef __webos__
+    IN_Evdev_Shutdown();
+#endif
     mouse_avail = 0;
 }
 
@@ -733,6 +826,11 @@ void IN_Commands (void)
 
 void IN_Move (usercmd_t *cmd)
 {
+#ifdef __webos__
+    // Analog controller movement/look (no-op if only a keyboard is attached).
+    IN_Evdev_Move(cmd);
+#endif
+
     if (!mouse_avail)
         return;
 

@@ -1,3 +1,5 @@
+#ifndef QUAKEDEF_H
+#define QUAKEDEF_H
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -334,3 +336,5 @@ extern	cvar_t	chase_active;
 void Chase_Init (void);
 void Chase_Reset (void);
 void Chase_Update (void);
+
+#endif // QUAKEDEF_H

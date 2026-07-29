@@ -1,0 +1,12 @@
+﻿Controller,Context,Row,Square,Cross,Circle,Triangle,L1,R1,L2,R2,Share,Options,PS,Touchpad,L3,R3,LeftStick,RightStick,Dpad
+DS4,reference,evdev-index,0,1,2,3,4,5,6,7,8,9,12,13,10,11,ABS_X/Y,ABS_Z/RZ,HAT0
+DS4,in-game,CURRENT,Fire,Fire,Jump,Jump,PrevWpn,NextWpn,Run,Fire,-,Menu,Menu,-,-,-,Move+Strafe,Look,Move+Strafe
+DS4,in-menu,CURRENT,Select,Select,Back,-,(PrevWpn),(NextWpn),(Run),-,Select,Back,Back,-,-,-,Navigate,-,Navigate
+DS4,in-game,DESIRED,Look Left,Look Down,Look Right,Look Up,Jump,Fire,Run,NextWpn,,Menu,,,Run,Run,Move+Strafe,Look,Move+Strafe
+DS4,in-menu,DESIRED,Back,Select,Select,Back,Back,Select,Back,Select,,Back,,,Back,Select,Navigate,,Navigate
+Logitech Precision,in-game,DESIRED,1 = Look Left,2 = Look Down,3 = Look Right,4 = Look Up,5 = Jump,6 = Fire,7 = Run,8 = NextWpn,9 = Menu,10 = Menu,,,,,,,Move+Strafe
+Logitech Precision,in-menu,DESIRED,1 = Back,2 = Select,3 = Select,4 = Back,5 = Back,6 = Select,7 = Back,8 = Select,9 = Back,10 = Select,,,,,,,Navigate
+DragonRise/Saturn,in-game,DESIRED,X = Look Left,A = Look Down,B = Look Right,Y = Look Up,Z = Run,C = Run,L Trig = Jump,R Trig = Fire,Home = PrevWpn,Select = NextWpn,Start = Menu,,,,,,Move+Strafe
+DragonRise/Saturn,in-menu,DESIRED,X = Back,A = Select,B = Select,Y = Back,Z = Back,C = Select,L Trig = Back,R Trig = Select,Home = Back,Select = Select,Start = Select,,,,,,Navigate
+Xbox knock-off,in-game,DESIRED,X = Look Left,A = Look Down,B = Look Right,Y = Look Up,LB = Jump,RB = Fire,LT = Run,RT = NextWpn,,Start = Menu,,,LS Click = Run,RS Click = Run,Move+Strafe,Look,Move+Strafe
+Xbox knock-off,in-menu,DESIRED,X = Back,A = Select,B = Select,Y = Back,LB = Back,RB = Select,LT = Back,RT = Back,Back = Back,Start = Select,,,,,,,Navigate

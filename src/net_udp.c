@@ -64,10 +64,18 @@ int UDP_Init (void)
 	if (COM_CheckParm ("-noudp"))
 		return -1;
 
-	// determine my name & address
-	gethostname(buff, MAXHOSTNAMELEN);
-	local = gethostbyname(buff);
-	myAddr = *(int *)local->h_addr_list[0];
+	// determine my name & address. In the PDK jail there is no resolvable
+	// hostname (no DNS, nss_mdns/hosts missing), so gethostbyname() returns
+	// NULL -- stock Quake dereferenced it unconditionally and SIGSEGV'd at
+	// launch (fault at h_addr_list offset). Fall back to loopback and carry on.
+	if (gethostname(buff, MAXHOSTNAMELEN) != 0)
+		buff[0] = 0;
+	buff[MAXHOSTNAMELEN-1] = 0;
+	local = buff[0] ? gethostbyname(buff) : NULL;
+	if (local && local->h_addr_list && local->h_addr_list[0])
+		myAddr = *(int *)local->h_addr_list[0];
+	else
+		myAddr = htonl(INADDR_LOOPBACK);
 
 	// if the quake hostname isn't set, set it to the machine name
 	if (Q_strcmp(hostname.string, "UNNAMED") == 0)
@@ -77,7 +85,13 @@ int UDP_Init (void)
 	}
 
 	if ((net_controlsocket = UDP_OpenSocket (0)) == -1)
-		Sys_Error("UDP_Init: Unable to open control socket\n");
+	{
+		// Jailed/offline: no UDP available. Disable this net driver instead of
+		// Sys_Error()ing out (single-player still runs fine over the loopback
+		// driver); returning -1 tells NET_Init to skip TCP/IP.
+		Con_Printf("UDP_Init: no control socket, disabling UDP\n");
+		return -1;
+	}
 
 	((struct sockaddr_in *)&broadcastaddr)->sin_family = AF_INET;
 	((struct sockaddr_in *)&broadcastaddr)->sin_addr.s_addr = INADDR_BROADCAST;

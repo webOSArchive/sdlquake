@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# prerm -- runs as ROOT via Preware / WebOS Quick Install before removal, undoing
+# what postinst added. NOTE: the launcher's Delete does NOT run maintainer
+# scripts, so remove via Preware/WOSQI for a clean uninstall (the leftovers are
+# otherwise harmless -- a udev rule and one shared jail mount line, no daemon).
+#
+JAILCFG=/etc/jail_pdk.conf
+GAMEJAILCFG=/etc/jail_game.conf
+UDEVRULE=/etc/udev/rules.d/99-sdlquake-pad.rules
+
+# Other packages that share the /dev/input jail mount -- leave it in place if
+# any of them is still installed.
+CMDRKEEN_RULE=/etc/udev/rules.d/99-cmdrkeen-pad.rules
+BTGAMEPAD_RULE=/etc/udev/rules.d/99-bt-gamepad.rules
+
+exec </dev/null          # never block reading stdin under the appinstaller
+mount -o remount,rw / 2>/dev/null || true
+
+rm -f "$UDEVRULE"
+
+# jail_game.conf is used only by type:"game" apps (Quake); none of the other
+# controller packages touch it, so always revert our patch there.
+if [ -f "$GAMEJAILCFG" ]; then
+    sed -i -e '/^mkdir \/dev\/input$/d' -e '/^mount ro \/dev\/input$/d' "$GAMEJAILCFG"
+    rm -f "$GAMEJAILCFG.sdlquake-orig"
+fi
+
+# jail_pdk.conf is SHARED with Commander Keen / the BT gamepad package -- revert
+# only if none of them is still installed.
+if [ ! -e "$CMDRKEEN_RULE" ] && [ ! -e "$BTGAMEPAD_RULE" ] && \
+   [ ! -e /usr/lib/libpmbtgamepad.so ]; then
+    if [ -f "$JAILCFG" ]; then
+        sed -i -e '/^mkdir \/dev\/input$/d' -e '/^mount ro \/dev\/input$/d' "$JAILCFG"
+        rm -f "$JAILCFG.sdlquake-orig"
+        echo "sdlquake: reverted the /dev/input jail patch"
+    fi
+else
+    echo "sdlquake: leaving the jail_pdk.conf /dev/input patch in place (another controller package is still installed)"
+fi
+
+( udevcontrol reload_rules || udevadm control --reload-rules ) </dev/null >/dev/null 2>&1 &
+mount -o remount,ro / 2>/dev/null || true
+
+echo "sdlquake: controller + keyboard support removed."
+exit 0

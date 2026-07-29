@@ -1,0 +1,78 @@
+#!/bin/sh
+#
+# postinst -- runs as ROOT via Preware / WebOS Quick Install (NOT palm-install,
+# which runs unprivileged). Enables USB & Bluetooth game controllers and
+# physical keyboards for this launcher-jailed PDK game -- two fixes the jail
+# otherwise blocks:
+#   1. bind-mount /dev/input into the PDK app jail (the jailer omits it)
+#   2. make the input evdev nodes readable by the jail user (uid 5003)
+# Both targets live on the READ-ONLY root fs, so remount it rw first (the next
+# reboot restores ro; a reboot isn't required for these to take effect).
+#
+# This is the same pair of fixes Commander Keen (com.cmdrkeen.game) and the
+# Bluetooth Gamepad package (org.webosarchive.btgamepad) apply; all three share
+# the one jail-mount line and coordinate on removal (see prerm).
+#
+set -e
+exec </dev/null          # never block reading stdin under the appinstaller
+
+UDEVRULE=/etc/udev/rules.d/99-sdlquake-pad.rules
+
+# Quake's appinfo type is "game", so it is jailed via /etc/jail_game.conf --
+# NOT jail_pdk.conf (which is for type:"pdk" apps like Commander Keen). We patch
+# BOTH so controller support works regardless of type and coexists with the
+# other packages that patch jail_pdk.conf.
+JAILCFGS="/etc/jail_game.conf /etc/jail_pdk.conf"
+
+mount -o remount,rw / 2>/dev/null || true
+
+# 1. Expose /dev/input inside the app jail(s). Idempotent; add the two lines
+#    only if not already present (takes effect on the next app launch, since
+#    jails are rebuilt per launch -- no reboot needed).
+for JAILCFG in $JAILCFGS; do
+    [ -f "$JAILCFG" ] || continue
+    grep -q "mount ro /dev/input" "$JAILCFG" && continue
+    [ -f "$JAILCFG.sdlquake-orig" ] || cp "$JAILCFG" "$JAILCFG.sdlquake-orig"
+    awk '{print} /^mkdir \/dev$/ && !d {print "mkdir /dev/input"; print "mount ro /dev/input"; d=1}' \
+        "$JAILCFG" > "$JAILCFG.new" && mv "$JAILCFG.new" "$JAILCFG"
+    echo "sdlquake: patched $JAILCFG to expose /dev/input in the app jail"
+done
+
+# 2. udev rule: 0666 on input event nodes so the jailed game can open them.
+#    This webOS udev predates the input_id builtin, so it can't classify a
+#    device as a joystick (no ID_INPUT_JOYSTICK). Instead we widen any input
+#    event node EXCEPT the TouchPad's three built-in button devices -- the touch
+#    panel is NOT exposed via /dev/input, so there is nothing sensitive to
+#    protect, and any plugged/paired controller OR keyboard (USB or BT) matches.
+cat > "$UDEVRULE" <<'EOF'
+# SDL Quake -- make game-controller / keyboard evdev nodes readable by a
+# launcher-jailed game (uid 5003 can't read the default 0640 root:root nodes).
+# This udev predates input_id, so we can't match "is a joystick" -- instead
+# 0666 every input event node except the TouchPad's built-in buttons (there is
+# no touchscreen node here).
+SUBSYSTEM!="input", GOTO="sdlq_end"
+KERNEL!="event[0-9]*", GOTO="sdlq_end"
+ATTRS{name}=="gpio-keys", GOTO="sdlq_end"
+ATTRS{name}=="pmic8058_pwrkey", GOTO="sdlq_end"
+ATTRS{name}=="headset", GOTO="sdlq_end"
+MODE="0666"
+LABEL="sdlq_end"
+EOF
+chmod 644 "$UDEVRULE"
+
+# Reload udev rules WITHOUT ever blocking the installer. The appinstaller waits
+# for this script's stdout to hit EOF, so anything that can stall must be fully
+# detached (its own fds -> /dev/null so it doesn't hold the installer's pipe).
+# The rule still takes effect either way: udev applies it on the next
+# plug/pair, and reload just makes it live for an already-attached device.
+( udevcontrol reload_rules || udevadm control --reload-rules ) </dev/null >/dev/null 2>&1 &
+
+# NB1: no `sync` here. Right after the installer extracted ~27 MB, a synchronous
+# sync blocks until that flushes to the (slow) eMMC and reads as a hung install;
+# the appinstaller does its own flushing anyway.
+# NB2: we intentionally do NOT remount / back to ro here. The installer still has
+# its own bookkeeping to write after this script, and a stock device's next boot
+# restores the read-only root anyway. (prerm restores ro, where it's safe to.)
+
+echo "sdlquake: controller + keyboard support installed. Re-launch Quake and (re)plug/pair the device."
+exit 0

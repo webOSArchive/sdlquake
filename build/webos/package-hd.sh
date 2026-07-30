@@ -68,7 +68,7 @@ Description: Quake HD
 Section: Games
 Priority: optional
 Depends:
-Source: { "Source":"git://git.webos-internals.org/games/sdlquake.git", "Feed":"webOS Archive", "Type":"Application", "Category":"Games", "Title":"Quake HD", "FullDescription":"Quake for the HP TouchPad, rendering at the panel's native 1024x768 instead of the old 480x320 phone resolution. USB and Bluetooth game controllers and keyboards supported. TouchPad only.", "Homepage":"https://webosarchive.org", "License":"id Software License" }
+Source: { "Source":"https://github.com/webOSArchive/webos-sdlquake-hd.git", "Feed":"webOS Archive", "Type":"Application", "Category":"Games", "Title":"Quake HD", "FullDescription":"Quake for the HP TouchPad, rendering at the panel's native 1024x768 instead of the old 480x320 phone resolution. USB and Bluetooth game controllers and keyboards supported. TouchPad only.", "Homepage":"https://webosarchive.org", "License":"id Software License" }
 EOF
 
 # Maintainer scripts, retargeted from the standard package to this app id.

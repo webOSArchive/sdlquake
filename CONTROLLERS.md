@@ -188,7 +188,7 @@ static const padprofile_t prof_mypad = {
     ABS_Z,    ABS_RZ,          /* look_x, look_y  -- right stick, or AX_NONE  */
     ABS_BRAKE, ABS_GAS,        /* trig_l, trig_r  -- analog triggers, or AX_NONE */
     AX_NONE,  AX_NONE,         /* dpad_x, dpad_y  -- only if not on the hat   */
-    0                          /* adopt_axes: 0 for a known pad. See trap 3.  */
+    0                          /* adopt_axes: 0 for a known pad. See trap 4.  */
 };
 ```
 
@@ -252,39 +252,67 @@ centre-resting axis (`axis_t.stick_ok`) — but if a pad behaves oddly, check th
 resting values first. The same pad also advertises two more axes that never
 move, and an `ABS_MISC` that does nothing.
 
-**3. Do not let auto-detection loose on a pad you have a table for.** The
+That guard is deliberately scoped to `prof_default` and can be overruled, for
+the reason in trap 3. A named profile and an explicit `padaxis` both win over
+it: both are statements of what an axis *is*, where the resting value is only
+ever a guess about it.
+
+**3. The resting value you read at open time may be a lie.** `EVIOCGABS` returns
+the kernel's *current* value for an axis, and the kernel initialises that to `0`
+and only fills it in once the device has actually reported. A pad nobody has
+touched since it enumerated therefore claims to rest at `0` — one **end** of a
+`0–255` axis — and trap 2's guard writes it off as permanently pegged. The
+failure is completely silent: the pad opens, the profile matches, every button
+works, and the axes just never do anything.
+
+This cost the Logitech Precision its entire d-pad on a fresh install, because
+that pad's d-pad *is* `move_x`/`move_y` — it has no hat and no analog stick to
+fall back on, so one bad guess removed all movement while leaving the pad
+looking healthy. The tell is in the console line the driver already prints:
+
+    evdev:  move=-1/-1 look=-1/-1 trig=-1/-1 dpad=-1/-1
+
+A `-1` for a role the pad definitely has means the axis was *rejected*, not
+absent. That case now also prints the axis, its resting value, and the
+`padaxis` line that overrides it.
+
+**4. Do not let auto-detection loose on a pad you have a table for.** The
 prober adopts unclaimed centre-resting axes as a d-pad, which is useful for an
 unknown pad and harmful for a known one — it would have wired the DragonRise's
 phantom axes into movement. Hence `adopt_axes`, which is `1` only for
 `prof_default`. Set it to `0` in your profile.
 
-**4. Narrow axes and noise gates do not mix.** A "report only if it moved 25% of
+**5. Narrow axes and noise gates do not mix.** A "report only if it moved 25% of
 its range" filter silently swallows *every* event from an axis whose whole range
 is `-1..1` (a hat) or `0..7` (an 8-way direction code). This ate a d-pad twice
 before being fixed. If a control appears completely dead in a capture, suspect
 the gate before the hardware.
 
-**5. A hotplugged pad may hand you its node before its axis info exists.** Open
+**6. A hotplugged pad may hand you its node before its axis info exists.** Open
 it within a second of appearing and `EVIOCGBIT(EV_ABS)` can fail, leaving a pad
 held with no axes and therefore no movement, forever. `axes_setup()` now returns
 a count and is re-run for a few seconds when it finds nothing. If you change
 that function, keep it safe to call twice.
 
-**6. Wireless pads sleep, and their dongle does not.** The USB dongle stays
+The retry also fires when the axes were *found* but a stick role got rejected
+for resting off-centre (`axes_unsettled()`), since trap 3 is the same race one
+step later — the info exists, the value behind it does not yet.
+
+**7. Wireless pads sleep, and their dongle does not.** The USB dongle stays
 enumerated, so the input node never disappears and a capture just sits there
 empty while you assume your code is broken. Wake the pad and work briskly.
 
-**7. `EVIOCGRAB` failing with `EBUSY` means a shared reader gets nothing.** If
+**8. `EVIOCGRAB` failing with `EBUSY` means a shared reader gets nothing.** If
 Quake is already running it holds the grab, so your probe captures silence. Stop
 the game first. Any other errno and shared reading still works.
 
-**8. Build with the PDK's own toolchain.**
+**9. Build with the PDK's own toolchain.**
 `/opt/PalmPDK/arm-gcc/bin/arm-none-linux-gnueabi-gcc`. The TouchPad has glibc
 2.8; a modern cross-compiler links against `GLIBC_2.15` and the binary will not
 load at all. Verify with `readelf -V <binary> | grep GLIBC` — everything must be
 2.8 or lower. Also: do not pass `-funroll-loops`, which makes this gcc crash.
 
-**9. The app jail hides `/dev/input`.** A pad works from a shell and does
+**10. The app jail hides `/dev/input`.** A pad works from a shell and does
 nothing when launched from the launcher unless the package's `postinst`
 bind-mounts `/dev/input` into the jail and makes the nodes readable by uid 5003.
 Quake is `"type":"game"`, so the mount belongs in `/etc/jail_game.conf` — not

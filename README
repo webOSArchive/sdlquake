@@ -85,9 +85,20 @@ BUILD AND PACKAGE -- THE ORIGINAL PHONE BUILD
 
     cd build/webos
     ./build-webos.sh             # -> fbuild/webos/sdlquake.bin
-    ./package-webos.sh           # -> ../../ipks/org.webosinternals.sdlquake_<ver>_armv7.ipk
+    ./package-webos.sh           # -> currently STOPS, see below
 
-Its version lives in the TOP-LEVEL appinfo.json, not the one under build/webos/hd.
+build-webos.sh still produces a working phone binary. PACKAGING DOES NOT: the
+top-level appinfo.json that supplied both the phone version and the descriptor
+in the payload has been removed, and package-webos.sh now exits rather than
+build an unversioned ipk with no descriptor, which webOS cannot install.
+
+Reviving it needs a descriptor for the PHONE app -- id org.webosinternals.sdlquake,
+type "game" (postinst relies on that: "game" is what jails Quake via
+/etc/jail_game.conf), main "sdlquake", requiredMemory 20 -- wired back into
+VERSION and the payload allow-list in package-webos.sh. The last shipped phone
+version was 1.5.0; "git show a0dae90^:appinfo.json" prints the file as it stood.
+The HD build is unaffected -- its version still comes only from
+build/webos/hd/appinfo.json.
 
 --------------------------------------------------------------------------------
 TWO TRAPS WORTH KNOWING BEFORE YOU CHANGE ANYTHING
@@ -106,7 +117,7 @@ shipped artifact can be checked directly:
     grep -ac "some string you just added" ipks/<the>.ipk    # after extracting
     grep -ac "some string you just added" fbuild/webos-gl/quakehd.bin
 
-The build tracks header, build-script and appinfo.json timestamps as well as
+The build tracks header, build-script and hd/appinfo.json timestamps as well as
 .c files, so editing a header does force a rebuild -- but it is still worth
 verifying the artifact when a change mysteriously does nothing.
 

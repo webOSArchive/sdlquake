@@ -6,17 +6,33 @@
 set -e
 
 APPID="org.webosinternals.sdlquake"
-REPO="../.."                       # repo root (holds appinfo.json, id1/, etc.)
+REPO="../.."                       # repo root (holds id1/, the app files, etc.)
 BINARY="fbuild/webos/sdlquake.bin"
 STAGING="webos-staging"
 
 echo "=== SDL Quake webOS packaging ==="
 
+# The repo-root appinfo.json this script used to read -- for the version here and
+# as the app descriptor in the payload -- has been removed, so the phone package
+# currently has NO descriptor source. Stop rather than carry on: without it this
+# would build an ipk named ..._<empty>_armv7.ipk, declaring "Version:" blank and
+# shipping no appinfo.json at all, which webOS cannot install. That artifact
+# would look like a successful build, and a package that installs nothing while
+# reporting success is exactly the failure this tree keeps trying to design out.
+#
+# To bring the phone build back, restore a descriptor for THIS app -- id
+# org.webosinternals.sdlquake, type "game" (postinst depends on it: "game" is
+# what jails Quake via /etc/jail_game.conf), main "sdlquake", requiredMemory 20 --
+# then re-add it to VERSION below and to the payload allow-list.
+echo "ERROR: no appinfo.json -- the phone build has no app descriptor." >&2
+echo "       See the note at the top of this script before packaging." >&2
+exit 1
+
 if [ ! -f "$BINARY" ]; then
     echo "ERROR: $BINARY not found -- run build-webos.sh first"; exit 1
 fi
 
-VERSION=$(grep '"version"' "$REPO/appinfo.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+VERSION=""      # was: parsed from the repo-root appinfo.json (now removed)
 OUTFILE="${APPID}_${VERSION}_armv7.ipk"
 APPDIR="$STAGING/usr/palm/applications/$APPID"
 
@@ -29,7 +45,7 @@ mkdir -p "$APPDIR" "$STAGING/CONTROL"
 # build, ipks and the *.md docs. Only the four touch-overlay PNGs in images/ are
 # actually loaded at runtime -- see JOY_IMAGE_FILENAME etc. in src/vid_sdl.c.
 echo "Staging app payload..."
-for item in appinfo.json sdlquake sdlquake.bin icon.png index.html README \
+for item in sdlquake sdlquake.bin icon.png index.html README \
             package.properties sources.json app images id1; do
     cp -r "$REPO/$item" "$APPDIR/"
 done

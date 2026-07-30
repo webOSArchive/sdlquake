@@ -531,6 +531,29 @@ static int axes_setup(int fd)
         if (quarter < 1) quarter = 1;
         a->stick_ok = (a->rest >= a->center - quarter && a->rest <= a->center + quarter);
 
+        // A NAMED profile is a truth table, so believe it over the resting-value
+        // guess. The guess reads ai.value, which the kernel initialises to 0 and
+        // only fills in once the device has actually reported -- so a pad nobody
+        // has touched since it enumerated claims to rest at 0, one END of a 0-255
+        // axis, and gets written off as permanently pegged. That failure is
+        // silent: the pad opens, every button works, and the axes simply never do
+        // anything. It cost the Logitech Precision its whole d-pad, because on
+        // that pad the d-pad IS move_x/move_y -- there is no hat and no stick to
+        // fall back on. rest is corrected too: a stick rests centred by
+        // definition, and leaving rest at 0 would make pad_reset_state() park the
+        // axis at full deflection and walk the player into a wall.
+        // The heuristic still guards prof_default, which is where it earns its
+        // keep -- an unknown pad's axes are a guess by definition (see the
+        // DragonRise's phantom ABS_X above).
+        if (prof != &prof_default) {
+            for (r = AXR_MOVE_X; r <= AXR_LOOK_Y; r++)
+                if (i == ax_role[r]) {
+                    a->stick_ok = 1;
+                    a->rest = a->val = a->center;
+                    break;
+                }
+        }
+
         if (i == ABS_HAT0X || i == ABS_HAT0Y) continue;
 
         claimed = 0;
@@ -563,9 +586,36 @@ static int axes_setup(int fd)
     if (ax_ovr[AXR_DPAD_X] != AX_NONE) dpad_ax = ax_ovr[AXR_DPAD_X];
     if (ax_ovr[AXR_DPAD_Y] != AX_NONE) dpad_ay = ax_ovr[AXR_DPAD_Y];
 
+    // "beat everything" has to include the resting-value heuristic. A padaxis is
+    // the user telling us what an axis IS; without this, stick_ok could veto the
+    // very override written to work around a bad guess, and the field escape
+    // hatch that CONTROLLERS.md promises would quietly do nothing.
+    for (i = AXR_MOVE_X; i <= AXR_LOOK_Y; i++) {
+        int c = ax_ovr[i];
+        if (c == AX_NONE || c < 0 || c > ABS_MAX || !axes[c].have) continue;
+        axes[c].stick_ok = 1;
+        axes[c].rest = axes[c].val = axes[c].center;
+    }
+
     have_right_stick = (ax_role[AXR_LOOK_X] != AX_NONE && axes[ax_role[AXR_LOOK_X]].stick_ok &&
                         ax_role[AXR_LOOK_Y] != AX_NONE && axes[ax_role[AXR_LOOK_Y]].stick_ok);
     return found;
+}
+
+// A stick role whose axis EXISTS but was written off as pegged is the signature
+// of a probe that beat the device's first report (see axes_setup). Worth asking
+// again a second later, which is what an UNKNOWN pad -- the one case with no
+// profile to believe instead -- has to rely on. A genuinely phantom axis just
+// fails the same way each time and we stop asking.
+static int axes_unsettled(void)
+{
+    int r;
+    for (r = AXR_MOVE_X; r <= AXR_LOOK_Y; r++) {
+        int c = ax_role[r];
+        if (c != AX_NONE && c <= ABS_MAX && axes[c].have && !axes[c].stick_ok)
+            return 1;
+    }
+    return 0;
 }
 
 // The ABS code actually serving a role, or -1 if that role is unavailable --
@@ -658,9 +708,10 @@ static void scan_devices(void)
             int b;
             profile_select(name);
             // A pad hotplugged into a running game can present its node before
-            // its axis info exists; retry for a few seconds rather than hold it
+            // its axis info exists -- or before it has reported a value for the
+            // axes it does advertise; retry for a few seconds rather than hold it
             // forever with no movement.
-            axes_retry = axes_setup(fd) ? 0 : 5;
+            axes_retry = (axes_setup(fd) && !axes_unsettled()) ? 0 : 5;
             strncpy(pad_name, name, sizeof(pad_name) - 1);
             pad_name[sizeof(pad_name) - 1] = 0;
             for (b = 0; b < BTN_NRAW; b++)      // for padstatus
@@ -675,6 +726,18 @@ static void scan_devices(void)
                        eff_axis(AXR_LOOK_X), eff_axis(AXR_LOOK_Y),
                        eff_axis(AXR_TRIG_L), eff_axis(AXR_TRIG_R),
                        dpad_ax, dpad_ay);
+            // Name the axis we threw away and why. A stick role dropped for
+            // resting off-centre is the one failure here that is otherwise
+            // completely mute -- the pad works, minus all movement.
+            for (b = AXR_MOVE_X; b <= AXR_LOOK_Y; b++) {
+                int c = ax_role[b];
+                if (c == AX_NONE || c > ABS_MAX || !axes[c].have) continue;
+                if (axes[c].stick_ok) continue;
+                Con_Printf("evdev:  %s: axis %d rests at %d, not centre (%d) --"
+                           " ignored; override with \"padaxis %s %d\"\n",
+                           axr_name[b], c, axes[c].rest, axes[c].center,
+                           axr_name[b], c);
+            }
             Con_Printf("evdev:  \"padstatus\" in the console shows the full map\n");
         } else {
             Con_Printf("evdev: keyboard '%s' on %s\n", name, path);
@@ -1085,6 +1148,13 @@ static void Pad_Axis_f (void)
             ax_role[i] = code;
             if (i == AXR_DPAD_X) dpad_ax = code;
             if (i == AXR_DPAD_Y) dpad_ay = code;
+            // Apply to the pad that is already open, so the effect is visible
+            // now rather than only after the next replug (axes_setup does the
+            // same for a pad opened later, e.g. from autoexec.cfg).
+            if (i <= AXR_LOOK_Y && code >= 0 && code <= ABS_MAX && axes[code].have) {
+                axes[code].stick_ok = 1;
+                axes[code].rest = axes[code].val = axes[code].center;
+            }
             overrides_loaded = 1;
             Con_Printf("padaxis: %s -> %d\n", axr_name[i], code);
             return;
@@ -1151,7 +1221,7 @@ void IN_Evdev_Poll (void)
         if (axes_retry > 0) {
             for (i = 0; i < MAX_DEVS; i++) {
                 if (devs[i].fd < 0 || devs[i].kind != DEV_PAD) continue;
-                if (axes_setup(devs[i].fd) > 0) {
+                if (axes_setup(devs[i].fd) > 0 && !axes_unsettled()) {
                     axes_retry = 0;
                     Con_Printf("evdev:  axes ready: move=%d/%d look=%d/%d "
                                "trig=%d/%d dpad=%d/%d\n",
@@ -1160,8 +1230,8 @@ void IN_Evdev_Poll (void)
                                eff_axis(AXR_TRIG_L), eff_axis(AXR_TRIG_R),
                                dpad_ax, dpad_ay);
                 } else if (--axes_retry == 0) {
-                    Con_Printf("evdev:  this pad reports no axes -- "
-                               "buttons only\n");
+                    Con_Printf("evdev:  giving up on the axis probe -- "
+                               "\"padstatus\" shows what was found\n");
                 }
                 break;
             }

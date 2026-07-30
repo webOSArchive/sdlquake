@@ -3,7 +3,7 @@
     "version": "1.1.1",
     "vendor": "webOS Archive",
     "vendor_email": "support@webosarchive.org",
-    "vendor_url": "https://webosarchive.org",
+    "vendor_url": "https://github.com/webOSArchive/webos-sdlquake-hd",
     "type": "pdk",
     "main": "quakehd",
     "title": "Quake HD",

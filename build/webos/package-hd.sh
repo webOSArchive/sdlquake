@@ -1,5 +1,5 @@
 #!/bin/bash
-# Package Quake HD (org.webosinternals.sdlquakehd) -> installable IPK.
+# Package Quake HD (org.webosarchive.sdlquakehd) -> installable IPK.
 #
 # TouchPad only, rendering at the panel's native 1024x768. Its own app id so it
 # installs alongside the long-stable phone release rather than replacing it;
@@ -9,7 +9,7 @@
 # art + the maintainer scripts that open /dev/input to the jail for controllers).
 set -e
 
-APPID="org.webosinternals.sdlquakehd"
+APPID="org.webosarchive.sdlquakehd"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$HERE/../.."
 SRCDIR="$HERE/hd"
@@ -62,12 +62,12 @@ cat > "$STAGING/CONTROL/control" <<EOF
 Package: $APPID
 Version: $VERSION
 Architecture: armv7
-Maintainer: WebOS Internals <http://www.webos-internals.org>
+Maintainer: webOS Archive <https://webosarchive.org>
 Description: Quake HD
 Section: Games
 Priority: optional
 Depends:
-Source: { "Source":"git://git.webos-internals.org/games/sdlquake.git", "Feed":"WebOS Internals", "Type":"Application", "Category":"Games", "Title":"Quake HD", "FullDescription":"Quake for the HP TouchPad, rendering at the panel's native 1024x768 instead of the old 480x320 phone resolution. USB and Bluetooth game controllers and keyboards supported. TouchPad only.", "Homepage":"http://www.webos-internals.org/wiki/Application:Quake", "License":"id Software License" }
+Source: { "Source":"git://git.webos-internals.org/games/sdlquake.git", "Feed":"webOS Archive", "Type":"Application", "Category":"Games", "Title":"Quake HD", "FullDescription":"Quake for the HP TouchPad, rendering at the panel's native 1024x768 instead of the old 480x320 phone resolution. USB and Bluetooth game controllers and keyboards supported. TouchPad only.", "Homepage":"https://webosarchive.org", "License":"id Software License" }
 EOF
 
 # Maintainer scripts, retargeted from the standard package to this app id.
@@ -87,5 +87,12 @@ ar -cr "../$OUTFILE" debian-binary control.tar.gz data.tar.gz
 cd ..
 rm -rf "$STAGING"
 
+# Publish to the repo's ipks/ dir as well. Two copies of the same filename in
+# two directories is how a stale build gets installed without anyone noticing,
+# so this keeps them in lockstep: ipks/ is the one you install and ship.
+mkdir -p "$REPO/ipks"
+cp -p "$OUTFILE" "$REPO/ipks/"
+
 echo ""
 echo "Package ready: $OUTFILE  ($(du -h "$OUTFILE" | cut -f1))"
+echo "Published to:  $REPO/ipks/$(basename "$OUTFILE")"

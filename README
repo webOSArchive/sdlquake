@@ -117,6 +117,78 @@ evdev button names and should work without configuration.
 TOUCH
 --------------------------------------------------------------------------------
 
-The on-screen overlay drives the menus as well as the game: the fire button acts
-as Select, the top edge of the screen acts as Escape, and the on-screen stick
-moves the menu selection.
+The touch overlay has three zones. Only two of them are drawn, which is the
+single biggest source of confusion -- read "Jump" below before deciding it is
+broken.
+
+  Zone            Where                        Drawn?
+  --------------  ---------------------------  ---------------------------------
+  Move stick      Bottom-LEFT, 320x320 px      Yes, always
+  Fire            Bottom-RIGHT, 320x320 px     Yes, always
+  Jump            TOP strip, full width,       No -- see below
+                  top 240 px of the screen
+
+  Move            Press the on-screen stick and drag. It is analog: how far you
+                  drag is how fast you move. There is a small dead zone at the
+                  centre so resting your thumb does not creep.
+  Fire            Tap or hold anywhere in the bottom-right zone. Holding
+                  auto-fires.
+
+  Jump            *** Slide, do not tap. ***
+                  Put a finger anywhere along the top of the screen and MOVE it
+                  slightly. A perfectly stationary tap does nothing at all.
+
+QUIRK 1 -- the jump button is invisible, and it needs a slide.
+
+  There is a jump graphic (images/jump.png), but it is not a button you press.
+  It flashes at the top-centre of the screen for a few frames AFTER a successful
+  jump, purely as confirmation. So the control you are looking for is not drawn
+  anywhere: the whole top 240 px of the screen, edge to edge, is the jump zone.
+
+  The zone only responds to finger MOVEMENT, not to a clean tap. Internally the
+  jump fires from SDL_MOUSEMOTION, and a tap that never moves emits no motion
+  event. Touch the top of the screen and slide a little and it jumps every time.
+
+QUIRK 2 -- to get from the opening demo into the menu, tap near the TOP of the
+screen (usually twice).
+
+  There is no dedicated "open menu" touch gesture. What actually happens is a
+  side effect worth knowing, because it explains the double tap:
+
+    1. Your tap lands in the invisible jump zone -- and the Quake logo and menu
+       sit high on the screen, so aiming at "where the menu should be" tends to
+       put your finger in the top 240 px without meaning to.
+    2. Jump sends the Space key.
+    3. While the attract-mode demo is playing, Quake opens the menu on ANY
+       printable keypress (keys.c: `if (cls.demoplayback && down &&
+       consolekeys[key] && key_dest == key_game) M_ToggleMenu_f();`), and Space
+       counts. So the jump gesture opens the menu.
+
+  The first tap often does nothing because it did not move enough to emit a
+  motion event; the second tap lands a few pixels off the first and does. Hence
+  "double tap". A single tap-and-slide along the top edge works the first time.
+
+  Note this trick only works during the demo. Once you are actually in a level,
+  Space just jumps -- see the limitation below.
+
+Once a menu IS open, the overlay is reinterpreted so a touch-only player can
+navigate it:
+
+  Fire zone (bottom-right)   Enter / Select
+  Top strip                  Escape (back out, or close the menu)
+  Move stick (bottom-left)   Arrow keys -- one step per push, re-arming when you
+                             return the stick toward centre
+
+LIMITATION -- you cannot open the menu by touch during gameplay.
+
+  In a live game there is no touch gesture for Escape; the top strip is jump.
+  To reach the menu mid-game (to save, load, or quit) you need one of:
+
+    Game controller   Start
+    Keyboard          Escape
+
+  This is a real gap for touch-only players rather than an intentional design,
+  and it is the first thing to fix if you are extending the overlay.
+
+The overlay can be hidden entirely with orange + '@' on a hardware keyboard.
+There is no touch gesture for this.

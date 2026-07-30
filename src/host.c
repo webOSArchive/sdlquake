@@ -20,6 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // host.c -- coordinates spawning and killing of local servers
 
 #include "quakedef.h"
+#ifdef __webos__
+#include "updater.h"
+#endif
 #include "r_local.h"
 
 /*
@@ -793,6 +796,9 @@ void _Host_Frame (float time)
 
 #ifdef __webos__
 	Host_FrameTimeReport ();
+	// Announces an available update once, from the main thread; the network
+	// call itself happens on a worker (see updater.c).
+	Updater_Poll ();
 #endif
 }
 
@@ -986,7 +992,14 @@ void Host_Init (quakeparms_t *parms)
 	host_hunklevel = Hunk_LowMark ();
 
 	host_initialized = true;
-	
+
+#ifdef __webos__
+	// Ask the App Museum whether a newer build exists. Fires a background
+	// thread and returns immediately; the answer, if any, is announced from
+	// the frame loop by Updater_Poll().
+	Updater_Init ();
+#endif
+
 	Sys_Printf ("========Quake Initialized=========\n");	
 }
 
@@ -1009,6 +1022,11 @@ void Host_Shutdown(void)
 		return;
 	}
 	isdown = true;
+
+#ifdef __webos__
+	// After the re-entry guard: reap the update-check worker exactly once.
+	Updater_Shutdown ();
+#endif
 
 // keep Con_Printf from trying to update the screen
 	scr_disabled_for_loading = true;

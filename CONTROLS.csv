@@ -1,12 +1,20 @@
-﻿Controller,Context,Row,Square,Cross,Circle,Triangle,L1,R1,L2,R2,Share,Options,PS,Touchpad,L3,R3,LeftStick,RightStick,Dpad
-DS4,reference,evdev-index,0,1,2,3,4,5,6,7,8,9,12,13,10,11,ABS_X/Y,ABS_Z/RZ,HAT0
-DS4,in-game,CURRENT,Fire,Fire,Jump,Jump,PrevWpn,NextWpn,Run,Fire,-,Menu,Menu,-,-,-,Move+Strafe,Look,Move+Strafe
-DS4,in-menu,CURRENT,Select,Select,Back,-,(PrevWpn),(NextWpn),(Run),-,Select,Back,Back,-,-,-,Navigate,-,Navigate
-DS4,in-game,DESIRED,Look Left,Look Down,Look Right,Look Up,Jump,Fire,Run,NextWpn,,Menu,,,Run,Run,Move+Strafe,Look,Move+Strafe
-DS4,in-menu,DESIRED,Back,Select,Select,Back,Back,Select,Back,Select,,Back,,,Back,Select,Navigate,,Navigate
-Logitech Precision,in-game,DESIRED,1 = Look Left,2 = Look Down,3 = Look Right,4 = Look Up,5 = Jump,6 = Fire,7 = Run,8 = NextWpn,9 = Menu,10 = Menu,,,,,,,Move+Strafe
-Logitech Precision,in-menu,DESIRED,1 = Back,2 = Select,3 = Select,4 = Back,5 = Back,6 = Select,7 = Back,8 = Select,9 = Back,10 = Select,,,,,,,Navigate
-DragonRise/Saturn,in-game,DESIRED,X = Look Left,A = Look Down,B = Look Right,Y = Look Up,Z = Run,C = Run,L Trig = Jump,R Trig = Fire,Home = PrevWpn,Select = NextWpn,Start = Menu,,,,,,Move+Strafe
-DragonRise/Saturn,in-menu,DESIRED,X = Back,A = Select,B = Select,Y = Back,Z = Back,C = Select,L Trig = Back,R Trig = Select,Home = Back,Select = Select,Start = Select,,,,,,Navigate
-Xbox knock-off,in-game,DESIRED,X = Look Left,A = Look Down,B = Look Right,Y = Look Up,LB = Jump,RB = Fire,LT = Run,RT = NextWpn,,Start = Menu,,,LS Click = Run,RS Click = Run,Move+Strafe,Look,Move+Strafe
-Xbox knock-off,in-menu,DESIRED,X = Back,A = Select,B = Select,Y = Back,LB = Back,RB = Select,LT = Back,RT = Back,Back = Back,Start = Select,,,,,,,Navigate
+Controller,Context,Row,Square,Cross,Circle,Triangle,L1,R1,L2,R2,Share,Options,PS,Touchpad,L3,R3,LeftStick,RightStick,Dpad
+# Columns are PHYSICAL POSITIONS using DS4 names (Square=face-left Cross=face-down Circle=face-right Triangle=face-up),,,,,,,,,,,,,,,,,,,
+# Row=evdev-code : that pad's captured truth table. Row=SCHEME : the actions (authoritative one scheme all pads). Row=cheatsheet : same scheme with that pad's printed button names.,,,,,,,,,,,,,,,,,,,
+ALL PADS,in-game,SCHEME,Look Left,Look Down,Look Right,Look Up,Jump,Fire,Run,NextWpn,PrevWpn,Menu,-,-,Run,Run,Move+Strafe,Look,Move+Strafe
+ALL PADS,in-menu,SCHEME,Back,Select,Select,Back,Back,Select,Back,Select,Back,Back,-,-,Back,Select,Navigate,-,Navigate
+DS4,reference,evdev-code,0x130,0x131,0x132,0x133,0x134,0x135,0x136,0x137,0x138,0x139,0x13c,0x13d,0x13a,0x13b,ABS_X/Y,ABS_Z/RZ,HAT0
+DS4,reference,analog-trigger-axis,,,,,,,ABS_RX,ABS_RY,,,,,,,,,
+DS4,in-game,cheatsheet,Look Left,Look Down,Look Right,Look Up,Jump,Fire,Run,NextWpn,Share = PrevWpn,Options = Menu,-,-,Run,Run,Move+Strafe,Look,Move+Strafe
+DS4,in-menu,cheatsheet,Back,Select,Select,Back,Back,Select,Back,Select,Share = Back,Options = Back,-,-,Back,Select,Navigate,-,Navigate
+Xbox knock-off (ShanWan),reference,evdev-code,0x133 = X,0x130 = A,0x131 = B,0x134 = Y,0x136 = LB,0x137 = RB,0x138 = LT,0x139 = RT,0x13a = Back,0x13b = Start,0x13c = Guide,,0x13d = LS,0x13e = RS,ABS_X/Y,ABS_Z/RZ,HAT0
+Xbox knock-off (ShanWan),reference,analog-trigger-axis,,,,,,,ABS_BRAKE,ABS_GAS,,,,,,,,,
+Xbox knock-off (ShanWan),in-game,cheatsheet,X = Look Left,A = Look Down,B = Look Right,Y = Look Up,LB = Jump,RB = Fire,LT = Run,RT = NextWpn,Back = PrevWpn,Start = Menu,Guide = -,,LS Click = Run,RS Click = Run,Move+Strafe,Look,Move+Strafe
+Xbox knock-off (ShanWan),in-menu,cheatsheet,X = Back,A = Select,B = Select,Y = Back,LB = Back,RB = Select,LT = Back,RT = Select,Back = Back,Start = Back,Guide = -,,LS Click = Back,RS Click = Select,Navigate,-,Navigate
+Logitech Precision,reference,evdev-code,0x120 = 1,0x121 = 2,0x122 = 3,0x123 = 4,0x124 = 5,0x125 = 6,0x126 = 7,0x127 = 8,0x128 = 9,0x129 = 10,,,,,ABS_X/Y = dpad,none,ABS_X/Y
+Logitech Precision,in-game,cheatsheet,1 = Look Left,2 = Look Down,3 = Look Right,4 = Look Up,5 = Jump,6 = Fire,7 = Run,8 = NextWpn,9 = PrevWpn,10 = Menu,,,,,,,Move+Strafe
+Logitech Precision,in-menu,cheatsheet,1 = Back,2 = Select,3 = Select,4 = Back,5 = Back,6 = Select,7 = Back,8 = Select,9 = Back,10 = Back,,,,,,,Navigate
+DragonRise/Saturn,reference,evdev-code,0x120 = X,0x121 = A,0x122 = B,0x123 = Y,0x126 = L Trig,0x127 = R Trig,0x124 = C,0x125 = Z,0x128 = Select,0x129 = Start,,,,,none,none,ABS_RX/RY
+DragonRise/Saturn,reference,note,"Saturn report order X A B Y C Z then L R Select Start - face buttons interleave the two rows. 8-way dpad on ABS_RX/RY (0=left/up 128=centre 255=right/down). Phantom axes ABS_X (pegged at 1) ABS_Y ABS_Z ABS_MISC are all ignored.",,,,,,,,,,,,,,,,
+DragonRise/Saturn,in-game,cheatsheet,X = Look Left,A = Look Down,B = Look Right,Y = Look Up,L Trig = Jump,R Trig = Fire,C = Run,Z = NextWpn,Select = PrevWpn,Start = Menu,,,,,none,none,Move+Strafe
+DragonRise/Saturn,in-menu,cheatsheet,X = Back,A = Select,B = Select,Y = Back,L Trig = Back,R Trig = Select,C = Back,Z = Select,Select = Back,Start = Back,,,,,none,none,Navigate

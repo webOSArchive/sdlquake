@@ -1,5 +1,122 @@
-This is a port of Quake.
+This is a port of Quake, originally created by webOS Internals. Updated in 2026 by codepoet and webOS Archive to add Bluetooth and USB Controller Support.
 
 http://www.libsdl.org/projects/quake/
 
 The source code is from http://www.libsdl.org/projects/quake/src/sdlquake-1.0.9.tar.gz
+
+
+================================================================================
+CONTROLS
+================================================================================
+
+Three input methods work at once: the on-screen touch overlay, a USB or
+Bluetooth game controller, and a USB or Bluetooth keyboard. Plug a controller or
+keyboard in at any time -- they are picked up within about a second, with no
+need to restart the game.
+
+
+--------------------------------------------------------------------------------
+KEYBOARD
+--------------------------------------------------------------------------------
+
+These are Quake 1.09's own stock bindings. NOTE: there is no WASD -- movement is
+on the arrow keys, which is how Quake shipped in 1996. See "Rebinding" below if
+you want WASD.
+
+  Movement
+    Up Arrow / Down Arrow      Move forward / backward
+    Left Arrow / Right Arrow   Turn left / right
+    Alt (hold) + Left/Right    Strafe instead of turn
+    , and .                    Strafe left / right
+    Shift (hold)               Run
+    Space or Enter             Jump
+    D / C                      Swim up / down
+
+  Combat
+    Ctrl                       Fire
+    1 - 8                      Select weapon directly
+    /                          Next weapon
+
+  Looking
+    A / Z                      Look up / down
+    Page Down / Delete         Look up / down
+    End                        Centre the view
+    Insert (hold)              Keyboard look
+    \ (hold)                   Mouse look
+
+  Interface
+    Esc                        Menu
+    ` (backtick)               Console
+    Tab                        Scoreboard
+    T                          Chat message
+    Pause                      Pause
+    - / =                      Shrink / enlarge the view
+    F1                         Help
+    F2 / F3                    Save / Load menu
+    F4                         Options menu
+    F5                         Multiplayer menu
+    F6 / F9                    Quicksave / Quickload
+    F10                        Quit
+    F11                        Zoom in
+    F12                        Screenshot
+
+Every printable key, arrow, function key and modifier reaches the game, and
+holding Shift produces capitals and shifted symbols when typing in the console.
+Verified with a Mitsumi/Apple Extended USB keyboard; a Bluetooth keyboard
+paired through webOS should work the same way, as it arrives over the same
+/dev/input path.
+
+Rebinding: open the console with ` and use Quake's normal bind command, for
+example
+
+    bind w +forward
+    bind s +back
+    bind a +moveleft
+    bind d +moveright
+
+Bindings are saved to id1/config.cfg and persist across launches.
+
+
+--------------------------------------------------------------------------------
+GAME CONTROLLER
+--------------------------------------------------------------------------------
+
+One scheme is used for every supported pad, so muscle memory carries between
+them. Positions below are described physically; CONTROLS.md gives the exact
+button for each pad, and CONTROLS.csv is the machine-readable table.
+
+  In game
+    Left stick, D-pad          Move and strafe
+    Right stick                Look
+    Face buttons               Look left / down / right / up
+                               (so aiming works on pads with no right stick)
+    Left shoulder              Jump
+    Right shoulder             Fire
+    Left trigger               Run (hold)
+    Right trigger              Next weapon
+    Stick clicks               Run
+    Start                      Menu
+    Back / Select              Previous weapon
+
+  In menus
+    D-pad, left stick          Navigate
+    Right side of the pad      Select
+      (face-down, face-right, right shoulder/trigger/stick-click)
+    Left side of the pad       Back
+      (face-left, face-up, left shoulder/trigger/stick-click, Back, Start)
+
+No in-game action fires while a menu is open.
+
+Verified pads: Sony DualShock 4 (USB and Bluetooth), ShanWan "Xbox knock-off"
+wireless, DragonRise "Sega Saturn style" wireless, and the Logitech Precision
+Gamepad. Other pads fall back to a generic profile that follows the standard
+evdev button names and should work without configuration.
+
+
+--------------------------------------------------------------------------------
+TOUCH
+--------------------------------------------------------------------------------
+
+The on-screen overlay drives the menus as well as the game: the fire button acts
+as Select, the top edge of the screen acts as Escape, and the on-screen stick
+moves the menu selection.

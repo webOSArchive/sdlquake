@@ -630,6 +630,72 @@ Host_Frame
 Runs all active servers
 ==================
 */
+#ifdef __webos__
+#include <time.h>	/* clock() -- CPU time consumed, for the pacing report */
+/*
+==================
+Host_FrameTimeReport
+
+With -frametime, print a frame-PACING summary once a second: frames actually
+run, the worst single frame interval, and how many frames blew past 50/100 ms.
+An average FPS number hides a periodic stall; a player feels it immediately.
+Written to stdout (redirect it to /tmp, i.e. tmpfs -- logging to the cryptofs
+app directory would itself cost frames). Used to hunt a ~1 Hz hitch caused by
+another process on the device stealing the CPU in bursts.
+==================
+*/
+static void Host_FrameTimeReport (void)
+{
+	static int	enabled = -1;
+	static double	t0, window_start, prev, worst;
+	static clock_t	cpu_start;
+	static int	frames, over100, over200;
+	double		now, dt, wall;
+	clock_t		cpu_now;
+
+	if (enabled < 0)
+		enabled = COM_CheckParm ("-frametime") ? 1 : 0;
+	if (!enabled)
+		return;
+
+	now = Sys_FloatTime ();
+	if (prev == 0.0)
+	{	// first frame: nothing to measure against yet
+		t0 = prev = window_start = now;
+		cpu_start = clock ();
+		return;
+	}
+	dt = now - prev;
+	prev = now;
+
+	frames++;
+	if (dt > worst)
+		worst = dt;
+	if (dt > 0.100)
+		over100++;
+	if (dt > 0.200)
+		over200++;
+
+	wall = now - window_start;
+	if (wall >= 1.0)
+	{
+		/* cpu% is the discriminator: this renderer is compute-bound, so a
+		 * healthy window sits near 100%. A stall with cpu% WELL BELOW 100
+		 * means we were descheduled -- someone else took the CPU. A stall at
+		 * ~100% means our own work got slower (paging, a big map, etc.). */
+		cpu_now = clock ();
+		printf ("ft: t=%4is %3i frames  worst=%4ims  >100ms=%2i  >200ms=%2i  cpu=%3i%%\n",
+			(int)(now - t0), frames, (int)(worst * 1000.0), over100, over200,
+			(int)(((double)(cpu_now - cpu_start) / (double)CLOCKS_PER_SEC) * 100.0 / wall));
+		fflush (stdout);
+		cpu_start = cpu_now;
+		window_start = now;
+		frames = over100 = over200 = 0;
+		worst = 0.0;
+	}
+}
+#endif
+
 void _Host_Frame (float time)
 {
 	static double		time1 = 0;
@@ -724,6 +790,10 @@ void _Host_Frame (float time)
 	}
 	
 	host_framecount++;
+
+#ifdef __webos__
+	Host_FrameTimeReport ();
+#endif
 }
 
 void Host_Frame (float time)

@@ -1,11 +1,52 @@
 # Quake TouchPad — Controller Mapping (reference)
 
-The editable mapping lives in **`CONTROLS.csv`** — fill in the `DESIRED` rows
-there (add rows/columns freely). This file is just the reference: the verified
-hardware truth table, how the columns work, current behaviour, and the action
-vocabulary. Use the exact action names from the **vocabulary** so each binding is
-unambiguous to implement. When the CSV is filled, I implement every scheme in one
-pass and you test each pad.
+The editable mapping lives in **`CONTROLS.csv`**. This file is the reference: the
+verified hardware truth tables, how the columns work, the implemented scheme, and
+the action vocabulary.
+
+---
+
+## How it works now (implemented in 1.4.4, verified on device E)
+
+Decoding happens in **two stages**, so one scheme fits every pad:
+
+1. A per-pad **profile** (`padprofile_t` in `src/in_evdev.c`, matched on the
+   evdev device name) maps that pad's raw evdev codes and axes onto
+   pad-independent **physical positions** — the CONTROLS.csv columns.
+2. **One action scheme** (`pad_recompute`) binds those positions to Quake
+   actions.
+
+Adding a controller is therefore a new profile table entry and nothing else.
+Profiles shipped: **DS4** (BT shim + USB), **ShanWan/Xbox knock-off**,
+**Logitech Precision**, and a **generic** fallback covering both the standard
+`BTN_` gamepad block and the `BTN_JOYSTICK` block.
+
+This replaced code that hard-coded the DS4 shim's button order as if it were
+universal — which is exactly why every other pad felt "unpredictable".
+
+### The implemented scheme
+
+**In game:** face buttons LOOK (left/right turn, up/down pitch — so aiming works
+on pads with no right stick); left stick + d-pad MOVE+STRAFE; right stick LOOKs;
+shoulders JUMP (L) / FIRE (R); triggers RUN (L) / NEXT WEAPON (R), read from
+their *analog* value at 30% pull; stick clicks RUN; Start opens the MENU; Back
+selects the PREVIOUS weapon.
+
+**In menu:** d-pad / left stick NAVIGATE, and the pad splits down the middle —
+everything on the **right** side SELECTS (face-down, face-right, R
+shoulder/trigger/click), everything on the **left** side goes BACK (face-left,
+face-up, L shoulder/trigger/click, Back, Start). No in-game action fires while a
+menu is open.
+
+`CONTROLS.csv` now records this as the single authoritative `SCHEME` pair of
+rows, plus a per-pad `cheatsheet` in that pad's own printed button names. The
+earlier per-pad `DESIRED` rows are gone because they contradicted each other —
+the Xbox row asked for Start = Select and right-trigger = Back where the DS4,
+Logitech and Saturn rows asked for the opposite. Inconsistency between pads was
+the complaint this rewrite existed to fix, so the majority won: **right side
+selects, left side backs out**, and Start closes a menu the same way it opens
+one. Left-stick menu navigation and Back = PrevWpn were blank in the CSV and are
+additions; without the latter there is no way to cycle weapons backwards.
 
 ---
 
@@ -65,12 +106,64 @@ Jump/Fire and triggers = Run/NextWpn.
 
 ---
 
-## Current behaviour (the "unpredictable" bits to fix)
+## ShanWan "Xbox knock-off" — verified truth table (device E, 2026-07-29)
 
-- **Weapon-switch and Run stay live in menus** — L1/R1/L2 keep acting in the
-  background while a menu is open. (Marked "(x)" in the CSV.)
-- **Context-switching**: ✕ and ● change meaning between game and menu.
-- **Shared actions**: Fire = Square + Cross + R2; Jump = Circle + Triangle.
+Captured by grabbing `/dev/input/event3` and pressing one control at a time
+(`build/webos/evread.c`). Name `ShanWan Wireless Gamepad`, VID:PID `0079:181c`.
+
+It advertises **16** contiguous buttons (`0x130`–`0x13f`) but only uses 13, and
+the used codes are **not** sequential from `0x130` — `0x132` and `0x135` are
+skipped. That gap pattern is the DragonRise family's shared descriptor (VID
+`0079` is DragonRise, the same vendor as the Saturn-style pad), where the face
+buttons occupy the A/B/[C]/X/Y/[Z] slots. So the advertised bitmap alone cannot
+tell you the layout — only a labelled capture can.
+
+| Physical | code | | Physical | code | | Axis | evdev |
+|---|---|-|---|---|-|---|---|
+| A (face down)  | `0x130` | | Back  | `0x13a` | | Left stick  | `ABS_X` / `ABS_Y` |
+| B (face right) | `0x131` | | Start | `0x13b` | | Right stick | `ABS_Z` / `ABS_RZ` |
+| X (face left)  | `0x133` | | Guide | `0x13c` | | LT analog   | `ABS_BRAKE` (rests 0) |
+| Y (face up)    | `0x134` | | LS click | `0x13d` | | RT analog | `ABS_GAS` (rests 0) |
+| LB | `0x136` | | RS click | `0x13e` | | D-pad | `ABS_HAT0X/Y` (−1…1) |
+| RB | `0x137` | | | | | | |
+| LT digital | `0x138` | | | | | | |
+| RT digital | `0x139` | | | | | | |
+
+The analog triggers on `ABS_GAS`/`ABS_BRAKE` are the trap: the old code only ever
+looked at `ABS_RX`/`ABS_RY` (where the *DS4* puts them), so on this pad the
+triggers did nothing at all.
+
+---
+
+## DragonRise "Sega Saturn style" — verified truth table (device E, 2026-07-29)
+
+VID:PID `0079:0011`, enumerates as `SWITCH CO.,LTD. USB Gamepad`. Ten buttons on
+the generic `BTN_JOYSTICK` block, in the **Saturn console's own report order**
+— X, A, B, Y, C, Z, then L, R, Select, Start — so the six face buttons
+**interleave the two rows** rather than running row by row:
+
+| Physical | code | | Physical | code |
+|---|---|-|---|---|
+| X (top-left)     | `0x120` | | L trigger | `0x126` |
+| A (bottom-left)  | `0x121` | | R trigger | `0x127` |
+| B (bottom-mid)   | `0x122` | | Select    | `0x128` |
+| Y (top-mid)      | `0x123` | | Start     | `0x129` |
+| C (bottom-right) | `0x124` | | | |
+| Z (top-right)    | `0x125` | | | |
+
+The 8-way d-pad is the **`ABS_RX`/`ABS_RY` pair** — `0`/`128`/`255` = left/centre/
+right and up/centre/down, diagonals setting both. It is *not* a hat, and not the
+`ABS_MISC` (range 0–7) axis the pad also advertises, which never fires. No analog
+stick, no analog trigger; the d-pad drives Move+Strafe by reading as a stick at
+full deflection, the same way the Logitech's `ABS_X/Y` d-pad does.
+
+**Three phantom axes.** This pad advertises `ABS_X` permanently pegged at **1** of
+0–255, plus `ABS_Y` and `ABS_Z` sitting dead centre and never moving. `ABS_X` is
+what made the generic profile strafe the player into a wall forever, and is why
+a stick role now requires a centre-resting axis (`stick_ok`); `ABS_Y`/`ABS_Z` are
+why a profiled pad no longer lets the prober adopt stray axes (`adopt_axes`).
+Two general lessons: **an advertised axis is not a real axis**, and a pad's
+advertised button bitmap cannot tell you its layout — only a labelled capture can.
 
 ---
 

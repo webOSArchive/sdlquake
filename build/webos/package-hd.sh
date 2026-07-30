@@ -2,8 +2,9 @@
 # Package Quake HD (org.webosarchive.sdlquakehd) -> installable IPK.
 #
 # TouchPad only, rendering at the panel's native 1024x768. Its own app id so it
-# installs alongside the long-stable phone release rather than replacing it;
-# metadata.json gates it to device 101.
+# installs alongside the long-stable phone release rather than replacing it.
+# It deliberately ships NO metadata.json -- see the long note below, that file
+# is what would force the app into 320x480 phone-compatibility mode.
 #
 # Same payload shape as the standard package (binary + game data + touch overlay
 # art + the maintainer scripts that open /dev/input to the jail for controllers).
@@ -16,7 +17,7 @@ SRCDIR="$HERE/hd"
 BINARY="$HERE/fbuild/webos-gl/quakehd.bin"
 STAGING="$HERE/hd-staging"
 
-[ -f "$BINARY" ] || { echo "ERROR: $BINARY not found -- run build-webos.sh first"; exit 1; }
+[ -f "$BINARY" ] || { echo "ERROR: $BINARY not found -- run ./build-webos-gl.sh first"; exit 1; }
 
 VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SRCDIR/appinfo.json")
 OUTFILE="${APPID}_${VERSION}_armv7.ipk"
@@ -83,16 +84,15 @@ cd "$STAGING"
 tar czf data.tar.gz ./usr
 tar czf control.tar.gz -C CONTROL .
 echo "2.0" > debian-binary
-ar -cr "../$OUTFILE" debian-binary control.tar.gz data.tar.gz
+# Write straight into the repo's ipks/ -- the ONE place packages live. An
+# earlier version also left a copy next to this script, and two files with the
+# same name in two directories is precisely how a stale build gets installed
+# without anyone noticing. There is now nothing to keep in sync.
+mkdir -p "$REPO/ipks"
+ar -cr "$REPO/ipks/$OUTFILE" debian-binary control.tar.gz data.tar.gz
 cd ..
 rm -rf "$STAGING"
 
-# Publish to the repo's ipks/ dir as well. Two copies of the same filename in
-# two directories is how a stale build gets installed without anyone noticing,
-# so this keeps them in lockstep: ipks/ is the one you install and ship.
-mkdir -p "$REPO/ipks"
-cp -p "$OUTFILE" "$REPO/ipks/"
-
 echo ""
-echo "Package ready: $OUTFILE  ($(du -h "$OUTFILE" | cut -f1))"
-echo "Published to:  $REPO/ipks/$(basename "$OUTFILE")"
+echo "Package ready: $REPO/ipks/$OUTFILE  ($(du -h "$REPO/ipks/$OUTFILE" | cut -f1))"
+echo "Install with:  palm-install ipks/$OUTFILE"

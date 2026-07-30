@@ -6,6 +6,112 @@ The source code is from http://www.libsdl.org/projects/quake/src/sdlquake-1.0.9.
 
 
 ================================================================================
+BUILDING AND PACKAGING
+================================================================================
+
+This tree produces TWO separate apps from the same source. They install side by
+side and neither replaces the other:
+
+  Quake HD    org.webosarchive.sdlquakehd   TouchPad only. OpenGL ES 1.1 on the
+                                            Adreno 220 at the panel's native
+                                            1024x768. This is the active one.
+  Quake       org.webosinternals.sdlquake   The original software-rendered
+                                            build for phones. Stable for years;
+                                            it needs no changes.
+
+--------------------------------------------------------------------------------
+PREREQUISITES
+--------------------------------------------------------------------------------
+
+1. The HP webOS PDK, installed at /opt/PalmPDK. The build uses the PDK's own
+   CodeSourcery cross compiler:
+
+     /opt/PalmPDK/arm-gcc/bin/arm-none-linux-gnueabi-gcc     (reports 4.3.3)
+
+   *** Do NOT substitute a modern ARM toolchain. *** This is the single most
+   expensive mistake available here. The TouchPad's glibc is 2.8 and stock PDK
+   binaries need only GLIBC_2.4; a Linaro 4.9.4 build links libm against
+   GLIBC_2.15 and the binary then loads on nothing at all:
+
+     ./quakehd.bin: /lib/libm.so.6: version `GLIBC_2.15' not found
+
+   The build prints the requirement when it finishes -- it must say GLIBC_2.4.
+   Check any binary yourself with:  readelf -V <binary> | grep GLIBC
+
+   The one quirk of this old gcc: -funroll-loops makes it segfault (an internal
+   compiler error in host_cmd.c). Do not add it. The build scripts already fall
+   back per-file from -O2 to -O1 to -O0 if a file trips the compiler.
+
+2. The webOS SDK command line tools on your PATH -- palm-install and novacom,
+   normally /usr/local/bin. Only needed to install, not to build.
+
+3. Game data. id1/pak0.pak in this repo is the shareware pak, which is
+   redistributable and enough to build and play episode 1. For the full game,
+   drop the retail pak0.pak and pak1.pak into id1/ before packaging; the
+   packager copies whatever is in that directory into the ipk. This matters
+   because the app is jailed on device and can only read its OWN directory --
+   it cannot reach a pak installed by the other package.
+
+--------------------------------------------------------------------------------
+BUILD AND PACKAGE -- QUAKE HD (the TouchPad build)
+--------------------------------------------------------------------------------
+
+Both scripts use paths relative to their own directory, so run them from there:
+
+    cd build/webos
+    ./build-webos-gl.sh          # -> fbuild/webos-gl/quakehd.bin
+    ./package-hd.sh              # -> ../../ipks/org.webosarchive.sdlquakehd_<ver>_armv7.ipk
+
+Then, with the TouchPad connected over USB and Developer Mode on:
+
+    cd ../..
+    palm-install ipks/org.webosarchive.sdlquakehd_1.1.1_armv7.ipk
+
+That is the whole install, upgrade AND uninstall procedure. Reboot afterwards
+only if the package changed something outside its own directory (the maintainer
+scripts patch the jail config for controller support, so do reboot on a first
+install). Do not hand-edit or delete anything under /var/palm/jail -- those
+directories are full of read-only bind mounts into /media/cryptofs, and removing
+them can take the whole cryptofs mount down with them.
+
+The version comes from ONE place: build/webos/hd/appinfo.json. The build reads
+it and passes it to the compiler as -DQUAKEHD_VERSION_RAW, the packager reads it
+for the ipk filename, and the update check compares against it. Bump it there
+and everything follows.
+
+--------------------------------------------------------------------------------
+BUILD AND PACKAGE -- THE ORIGINAL PHONE BUILD
+--------------------------------------------------------------------------------
+
+    cd build/webos
+    ./build-webos.sh             # -> fbuild/webos/sdlquake.bin
+    ./package-webos.sh           # -> ../../ipks/org.webosinternals.sdlquake_<ver>_armv7.ipk
+
+Its version lives in the TOP-LEVEL appinfo.json, not the one under build/webos/hd.
+
+--------------------------------------------------------------------------------
+TWO TRAPS WORTH KNOWING BEFORE YOU CHANGE ANYTHING
+--------------------------------------------------------------------------------
+
+Never ship a metadata.json with the HD build. Gating the app with
+{"version":1,"devices":[101]} puts it into phone compatibility mode, and the
+compositor then hands it a 320x480 surface instead of the panel's 1024x768.
+This was confirmed by A/B on the same binary, adding and removing only that
+file. package-hd.sh deliberately does not create one.
+
+If a change does not seem to take effect, confirm what is actually IN the
+package before debugging the code. String literals survive stripping, so the
+shipped artifact can be checked directly:
+
+    grep -ac "some string you just added" ipks/<the>.ipk    # after extracting
+    grep -ac "some string you just added" fbuild/webos-gl/quakehd.bin
+
+The build tracks header, build-script and appinfo.json timestamps as well as
+.c files, so editing a header does force a rebuild -- but it is still worth
+verifying the artifact when a change mysteriously does nothing.
+
+
+================================================================================
 CONTROLS
 ================================================================================
 

@@ -175,7 +175,7 @@ void SCR_DrawCenterString (void)
 	start = scr_centerstring;
 
 	if (scr_center_lines <= 4)
-		y = vid.height*0.35;
+		y = vid.conheight*0.35;
 	else
 		y = 48;
 
@@ -185,7 +185,7 @@ void SCR_DrawCenterString (void)
 		for (l=0 ; l<40 ; l++)
 			if (start[l] == '\n' || !start[l])
 				break;
-		x = (vid.width - l*8)/2;
+		x = (vid.conwidth - l*8)/2;
 		for (j=0 ; j<l ; j++, x+=8)
 		{
 			Draw_Character (x, y, start[j]);	
@@ -306,7 +306,9 @@ static void SCR_CalcRefdef (void)
 	}
 	size /= 100.0;
 
-	h = vid.height - sb_lines;
+	// sb_lines is in 2D units; the bar occupies sb_lines * scr_2dscale real
+	// pixels, which is what the 3D view has to make room for.
+	h = vid.height - sb_lines * scr_2dscale;
 
 	r_refdef.vrect.width = vid.width * size;
 	if (r_refdef.vrect.width < 96)
@@ -316,8 +318,8 @@ static void SCR_CalcRefdef (void)
 	}
 
 	r_refdef.vrect.height = vid.height * size;
-	if (r_refdef.vrect.height > vid.height - sb_lines)
-		r_refdef.vrect.height = vid.height - sb_lines;
+	if (r_refdef.vrect.height > vid.height - sb_lines * scr_2dscale)
+		r_refdef.vrect.height = vid.height - sb_lines * scr_2dscale;
 	if (r_refdef.vrect.height > vid.height)
 			r_refdef.vrect.height = vid.height;
 	r_refdef.vrect.x = (vid.width - r_refdef.vrect.width)/2;
@@ -468,8 +470,8 @@ void SCR_DrawPause (void)
 		return;
 
 	pic = Draw_CachePic ("gfx/pause.lmp");
-	Draw_Pic ( (vid.width - pic->width)/2, 
-		(vid.height - 48 - pic->height)/2, pic);
+	Draw_Pic ( (vid.conwidth - pic->width)/2, 
+		(vid.conheight - 48 - pic->height)/2, pic);
 }
 
 
@@ -487,8 +489,8 @@ void SCR_DrawLoading (void)
 		return;
 		
 	pic = Draw_CachePic ("gfx/loading.lmp");
-	Draw_Pic ( (vid.width - pic->width)/2, 
-		(vid.height - 48 - pic->height)/2, pic);
+	Draw_Pic ( (vid.conwidth - pic->width)/2, 
+		(vid.conheight - 48 - pic->height)/2, pic);
 }
 
 
@@ -513,11 +515,11 @@ void SCR_SetUpToDrawConsole (void)
 
 	if (con_forcedup)
 	{
-		scr_conlines = vid.height;		// full screen
+		scr_conlines = vid.conheight;		// full screen
 		scr_con_current = scr_conlines;
 	}
 	else if (key_dest == key_console)
-		scr_conlines = vid.height/2;	// half screen
+		scr_conlines = vid.conheight/2;	// half screen
 	else
 		scr_conlines = 0;				// none visible
 	
@@ -702,7 +704,7 @@ void SCR_DrawNotifyString (void)
 
 	start = scr_notifystring;
 
-	y = vid.height*0.35;
+	y = vid.conheight*0.35;
 
 	do	
 	{
@@ -710,7 +712,7 @@ void SCR_DrawNotifyString (void)
 		for (l=0 ; l<40 ; l++)
 			if (start[l] == '\n' || !start[l])
 				break;
-		x = (vid.width - l*8)/2;
+		x = (vid.conwidth - l*8)/2;
 		for (j=0 ; j<l ; j++, x+=8)
 			Draw_Character (x, y, start[j]);	
 			
@@ -783,27 +785,32 @@ void SCR_BringDownConsole (void)
 	VID_SetPalette (host_basepal);
 }
 
+void D_DrawUIOverlay (void);
+
 void SCR_TileClear (void)
 {
-	if (r_refdef.vrect.x > 0) {
+	// r_refdef.vrect is in REAL pixels; Draw_TileClear draws in the 2D space.
+	// Convert, or the tiled backtile texture is drawn at the wrong scale and
+	// smears across the screen.
+	int vx = r_refdef.vrect.x      / scr_2dscale;
+	int vy = r_refdef.vrect.y      / scr_2dscale;
+	int vw = r_refdef.vrect.width  / scr_2dscale;
+	int vh = r_refdef.vrect.height / scr_2dscale;
+
+	if (vx > 0) {
 		// left
-		Draw_TileClear (0, 0, r_refdef.vrect.x, vid.height - sb_lines);
+		Draw_TileClear (0, 0, vx, vid.conheight - sb_lines);
 		// right
-		Draw_TileClear (r_refdef.vrect.x + r_refdef.vrect.width, 0, 
-			vid.width - r_refdef.vrect.x + r_refdef.vrect.width, 
-			vid.height - sb_lines);
+		Draw_TileClear (vx + vw, 0,
+			vid.conwidth - (vx + vw),
+			vid.conheight - sb_lines);
 	}
-	if (r_refdef.vrect.y > 0) {
+	if (vy > 0) {
 		// top
-		Draw_TileClear (r_refdef.vrect.x, 0, 
-			r_refdef.vrect.x + r_refdef.vrect.width, 
-			r_refdef.vrect.y);
+		Draw_TileClear (vx, 0, vw, vy);
 		// bottom
-		Draw_TileClear (r_refdef.vrect.x,
-			r_refdef.vrect.y + r_refdef.vrect.height, 
-			r_refdef.vrect.width, 
-			vid.height - sb_lines - 
-			(r_refdef.vrect.height + r_refdef.vrect.y));
+		Draw_TileClear (vx, vy + vh, vw,
+			vid.conheight - sb_lines - (vh + vy));
 	}
 }
 
@@ -917,6 +924,9 @@ void SCR_UpdateScreen (void)
 	}
 
 	V_UpdatePalette ();
+
+	// On-screen touch controls last, over everything, in real pixels.
+	D_DrawUIOverlay ();
 
 	GL_EndRendering ();
 }

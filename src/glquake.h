@@ -224,6 +224,20 @@ extern	cvar_t	gl_flashblend;
 extern	cvar_t	gl_nocolors;
 extern	cvar_t	gl_doubleeyes;
 
+// 2D LAYER MAGNIFICATION.
+// Quake draws all 2D -- HUD, menus, console, text -- at 1:1 pixels in a
+// coordinate space of vid.conwidth x vid.conheight. On a 1024x768 panel that
+// makes the 320-unit-wide status bar cover under a third of the screen. So the
+// 2D space is kept SMALLER than the real surface by this factor, and GL_Set2D
+// stretches it over the whole viewport.
+//
+// Only the 2D layer scales. vid.width/vid.height stay REAL pixels and the 3D
+// path (SCR_CalcRefdef, R_SetupGL) is untouched -- scaling the whole coordinate
+// space instead tiles the screen, which is a mistake already made once.
+// The one place the two spaces meet is sb_lines: the 3D view must reserve
+// sb_lines * scr_2dscale REAL pixels for the status bar.
+extern	int		scr_2dscale;
+
 extern	int		gl_lightmap_format;
 extern	int		gl_solid_format;
 extern	int		gl_alpha_format;

@@ -84,6 +84,15 @@ typedef struct {
 } evdev_t;
 
 static evdev_t devs[MAX_DEVS];
+
+// Nodes probed and found uninteresting (the TouchPad's own gpio-keys,
+// pmic8058_pwrkey and headset). MEASURED: open() on those three costs 22-71 ms
+// EACH -- their drivers do real work in the open handler -- so probing them
+// once a second cost ~180 ms and showed up as a periodic half-second hitch that
+// looked for all the world like a rendering problem. Probe a node once, then
+// skip it until it actually disappears.
+#define MAX_NODES 16
+static byte node_boring[MAX_NODES];
 static Uint32  last_scan;
 static int     scan_verbose = 3;   // chatty right after a disconnect, then quiet
 
@@ -605,6 +614,12 @@ static void scan_devices(void)
             if (devs[s].fd >= 0 && devs[s].idx == i) { held = 1; break; }
         if (held) { seen++; continue; }
 
+        // access() only stats the node; it does not enter the driver, so it is
+        // cheap where open() is not. A node that has gone away forfeits its
+        // "boring" mark, so a replacement device at the same index is probed.
+        if (access(path, F_OK) != 0) { node_boring[i] = 0; continue; }
+        if (node_boring[i]) { seen++; continue; }
+
         fd = open(path, O_RDONLY | O_NONBLOCK);
         if (fd < 0) {
             /* ENOENT = node absent (pad asleep); EACCES = a root-only built-in
@@ -619,13 +634,13 @@ static void scan_devices(void)
 
         // Never grab the TouchPad's built-in buttons / power / headset keys.
         if (!strcmp(name, "gpio-keys") || !strcmp(name, "pmic8058_pwrkey") ||
-            !strcmp(name, "headset")) { close(fd); continue; }
+            !strcmp(name, "headset")) { node_boring[i] = 1; close(fd); continue; }
 
         if (has_key_cap(fd, BTN_GAMEPAD) || has_key_cap(fd, BTN_JOYSTICK))
             kind = DEV_PAD;
         else if (looks_like_keyboard(fd))
             kind = DEV_KBD;
-        else { close(fd); continue; }
+        else { node_boring[i] = 1; close(fd); continue; }
 
         // Grab exclusively so the system doesn't also process the pad. Best-
         // effort (like Commander Keen): if the grab fails, keep the fd and read
@@ -1085,6 +1100,7 @@ void IN_Evdev_Init (void)
     int i;
     for (i = 0; i < MAX_DEVS; i++) { devs[i].fd = -1; devs[i].kind = DEV_NONE; devs[i].idx = -1; }
     memset(qk_have, 0, sizeof(qk_have));
+    memset(node_boring, 0, sizeof(node_boring));
     memset(axes, 0, sizeof(axes));
     pad_name[0] = 0;
     memset(btn_have, 0, sizeof(btn_have));
@@ -1119,11 +1135,19 @@ void IN_Evdev_Shutdown (void)
 void IN_Evdev_Poll (void)
 {
     Uint32 now = SDL_GetTicks();
+    Uint32 poll_t0 = now;
     int i, have_pad = 0;
 
     if (now - last_scan >= 1000) {   // (re)scan for hotplugged devices ~1/s
+        Uint32 t0 = SDL_GetTicks(), dt;
         last_scan = now;
         scan_devices();
+        dt = SDL_GetTicks() - t0;
+        // The hotplug scan opens up to 16 device nodes. If that ever costs real
+        // time it shows up as a periodic hitch once a second, which is exactly
+        // the kind of stall that gets blamed on the renderer.
+        if (dt >= 20)
+            Con_Printf("evdev: SCAN TOOK %ums\n", (unsigned)dt);
         if (axes_retry > 0) {
             for (i = 0; i < MAX_DEVS; i++) {
                 if (devs[i].fd < 0 || devs[i].kind != DEV_PAD) continue;
@@ -1165,6 +1189,12 @@ void IN_Evdev_Poll (void)
 
     if (have_pad) pad_recompute();
     else { memset(qk_want, 0, sizeof(qk_want)); qk_reconcile(); }
+
+    {
+        Uint32 dt = SDL_GetTicks() - poll_t0;
+        if (dt >= 20)
+            Con_Printf("evdev: POLL TOOK %ums\n", (unsigned)dt);
+    }
 }
 
 void IN_Evdev_Move (usercmd_t *cmd)

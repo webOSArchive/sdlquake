@@ -25,12 +25,19 @@
 #define    BASEWIDTH    1024
 #define    BASEHEIGHT   768
 
-#define    FIRE_SIZE    160
-#define    JUMP_SIZE    120
-#define    JOY_SIZE     160
-#define    JOY_DEAD     10
-#define    JOY_X        80
-#define    JOY_Y        ( (float)vid.height - 80.0f )
+// Touch zones, in REAL pixels. The originals were tuned for the Palm Pre's
+// 480x320 screen; ui_scale grows them for the TouchPad so a thumb covers the
+// same fraction of the panel. The artwork is sized from these same numbers, so
+// what you see is what you can press.
+static int ui_scale = 1;
+
+#define    FIRE_SIZE    (160 * ui_scale)
+#define    JUMP_SIZE    (120 * ui_scale)
+#define    JOY_SIZE     (160 * ui_scale)
+#define    JOY_DEAD     (10  * ui_scale)
+#define    JOY_X        (JOY_SIZE / 2)
+#define    JOY_Y        ( (float)vid.height - JOY_SIZE / 2.0f )
+#define    UI_MARGIN    (16 * ui_scale)
 
 #define    OVERLAY_ITEM_COUNT   4
 
@@ -64,6 +71,7 @@ void (*vid_menukeyfn)(int key) = NULL;
 // GL renderer globals (declared extern in glquake.h; the desktop backends
 // define them, so this one must too).
 static int   scr_width, scr_height;
+int          scr_2dscale = 1;
 qboolean     isPermedia = false;
 qboolean     gl_mtexable = false;
 
@@ -101,6 +109,8 @@ static void GLES_MTexCoord2f (GLenum target, GLfloat s, GLfloat t)
 {
     glesMultiTexCoord2f(GLES_TexUnit(target), s, t);
 }
+
+static void GL_InitOverlay (void);      /* defined with the overlay, below */
 
 /*
 =================
@@ -146,13 +156,22 @@ void    VID_Init (unsigned char *palette)
     // Render at whatever the compositor actually gave us, rather than assuming.
     // -winsize still overrides, for experimenting with lower internal
     // resolutions.
-    vid.width  = vid.conwidth  = screen->w;
-    vid.height = vid.conheight = screen->h;
+    // vid.width/height are REAL pixels (3D renders at full resolution).
+    // vid.conwidth/conheight are the smaller 2D space; see scr_2dscale.
+    vid.width  = screen->w;
+    vid.height = screen->h;
+    scr_2dscale = (vid.width >= 1024) ? 2 : 1;
+    vid.conwidth  = vid.width  / scr_2dscale;
+    vid.conheight = vid.height / scr_2dscale;
     if ((pnum = COM_CheckParm("-winsize")) && pnum < com_argc - 2) {
         int w = Q_atoi(com_argv[pnum + 1]), h = Q_atoi(com_argv[pnum + 2]);
         if (w > 0 && h > 0) {
-            vid.width = vid.conwidth = w;
-            vid.height = vid.conheight = h;
+            vid.width  = w;
+            vid.height = h;
+            scr_2dscale = (vid.width >= 1024) ? 2 : 1;
+            ui_scale    = scr_2dscale;
+            vid.conwidth  = vid.width  / scr_2dscale;
+            vid.conheight = vid.height / scr_2dscale;
         }
     }
     scr_width  = vid.width;
@@ -167,8 +186,9 @@ void    VID_Init (unsigned char *palette)
     {
         GLint vp[4] = {0,0,0,0};
         glGetIntegerv(GL_VIEWPORT, vp);
-        Con_Printf("GL surface %dx%d, viewport %dx%d\n",
-                   screen->w, screen->h, vp[2], vp[3]);
+        Con_Printf("GL surface %dx%d, viewport %dx%d, 2D layer %dx%d (x%d)\n",
+                   screen->w, screen->h, vp[2], vp[3],
+                   vid.conwidth, vid.conheight, scr_2dscale);
     }
 
     vid.aspect = ((float)vid.height / (float)vid.width) * (320.0 / 240.0);
@@ -180,6 +200,7 @@ void    VID_Init (unsigned char *palette)
     VGA_height = vid.conheight;
 
     GL_Init();
+    GL_InitOverlay();
 
     // Build the 24-bit palette the GL renderer uses for texture uploads.
     VID_SetPalette(palette);
@@ -296,6 +317,161 @@ void GL_EndRendering (void)
 // framebuffer; there is no such buffer here.
 void D_BeginDirectRect (int x, int y, byte *pbitmap, int width, int height) { }
 void D_EndDirectRect (int x, int y, int width, int height) { }
+
+
+/* ===========================================================================
+ * On-screen touch controls (GL)
+ *
+ * The software backend blitted four PNGs onto the framebuffer. Here they are
+ * uploaded once as textures and drawn as alpha-blended quads.
+ *
+ * IMPORTANT: this draws in REAL PIXELS, not the scaled 2D space the HUD uses.
+ * The touch ZONES are compared against SDL mouse coordinates, which are real
+ * surface pixels, so the artwork has to share that coordinate system or the
+ * buttons would not sit where you actually have to press.
+ * ======================================================================== */
+#define    JOY_IMAGE_FILENAME        "images/joystick.png"
+#define    JOY_PRESS_IMAGE_FILENAME  "images/joystick-press.png"
+#define    JUMP_IMAGE_FILENAME       "images/jump.png"
+#define    FIRE_IMAGE_FILENAME       "images/fire.png"
+#define    OVERLAY_ALPHA             0.5f
+
+SDL_Surface *IMG_Load (char *filename);     /* no header shipped for this */
+
+typedef struct { int tex, w, h; } gltex_t;
+static gltex_t ov_joy, ov_joy_press, ov_jump, ov_fire;
+static qboolean overlay_ready = false;
+
+// Upload a PNG as an RGBA texture. Texture NAMES come from Quake's own
+// counter, not glGenTextures -- Quake uses texture_extension_number directly as
+// the GL name, so an independently generated name could collide later.
+static qboolean GL_LoadOverlayImage (char *file, gltex_t *out)
+{
+    SDL_Surface *img, *rgba;
+
+    img = IMG_Load(file);
+    if (!img) { Con_Printf("overlay: cannot load %s\n", file); return false; }
+
+    // Normalise to straight RGBA bytes. SDL_SRCALPHA off so the source alpha is
+    // copied verbatim instead of being composited away during the blit.
+    rgba = SDL_CreateRGBSurface(SDL_SWSURFACE, img->w, img->h, 32,
+                                0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+    if (!rgba) { SDL_FreeSurface(img); return false; }
+    SDL_SetAlpha(img, 0, 255);
+    SDL_BlitSurface(img, NULL, rgba, NULL);
+
+    out->w   = img->w;
+    out->h   = img->h;
+    out->tex = texture_extension_number++;
+
+    GL_Bind(out->tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, rgba->w, rgba->h, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, rgba->pixels);
+    // No mipmaps and clamped edges: these are screen-space sprites, and the
+    // Adreno takes non-power-of-two textures (GL_OES_texture_npot).
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    SDL_FreeSurface(rgba);
+    SDL_FreeSurface(img);
+    return true;
+}
+
+static void GL_InitOverlay (void)
+{
+    overlay_ready =
+        GL_LoadOverlayImage(JOY_IMAGE_FILENAME,       &ov_joy)       &&
+        GL_LoadOverlayImage(JOY_PRESS_IMAGE_FILENAME, &ov_joy_press) &&
+        GL_LoadOverlayImage(JUMP_IMAGE_FILENAME,      &ov_jump)      &&
+        GL_LoadOverlayImage(FIRE_IMAGE_FILENAME,      &ov_fire);
+    if (!overlay_ready)
+        Con_Printf("overlay: disabled (artwork missing)\n");
+}
+
+// Draw centred at (cx,cy) at an explicit size. Size comes from the touch ZONE,
+// not the source image -- the art is only 72-74px square, so drawing it at
+// native size on a 1024x768 panel looks tiny next to the region it represents.
+static void GL_DrawOverlayQuad (gltex_t *t, int cx, int cy, int w, int h)
+{
+    int x = cx - w / 2, y = cy - h / 2;
+    GL_Bind(t->tex);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0, 0); glVertex2f(x,     y);
+    glTexCoord2f(1, 0); glVertex2f(x + w, y);
+    glTexCoord2f(1, 1); glVertex2f(x + w, y + h);
+    glTexCoord2f(0, 1); glVertex2f(x,     y + h);
+    glEnd();
+}
+
+void D_DrawUIOverlay (void)
+{
+    if (!overlay_ready || !drawoverlay)
+        return;
+
+    // Own projection, in real pixels, so the art lines up with the touch zones.
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, vid.width, vid.height, 0, -99999, 99999);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_BLEND);
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glColor4f(1, 1, 1, OVERLAY_ALPHA);
+
+    // Sizes are fractions of each touch zone; positions are lifted off the
+    // screen edges by UI_MARGIN so nothing is half off the panel.
+    {
+        int joy_side  = (JOY_SIZE  * 85) / 100;
+        int thumb_sid = (JOY_SIZE  * 42) / 100;
+        int fire_side = (FIRE_SIZE * 72) / 100;
+        int jump_w    = (vid.width * 38) / 100;
+        int jump_h    = jump_w * ov_jump.h / (ov_jump.w ? ov_jump.w : 1);
+        int jcx = JOY_X;
+        int jcy = (int)JOY_Y - UI_MARGIN;
+        int tx, ty, lim;
+
+        GL_DrawOverlayQuad(&ov_joy, jcx, jcy, joy_side, joy_side);
+
+        // Thumb follows the finger, clamped to stay fully on screen.
+        tx = jcx + (int)joy_x;
+        ty = jcy + (int)joy_y;
+        lim = thumb_sid / 2;
+        if (tx < lim) tx = lim;
+        if (ty < lim) ty = lim;
+        if (tx > vid.width  - lim) tx = vid.width  - lim;
+        if (ty > vid.height - lim) ty = vid.height - lim;
+        GL_DrawOverlayQuad(&ov_joy_press, tx, ty, thumb_sid, thumb_sid);
+
+        if (jumping_counter > 0) {
+            jumping_counter--;
+            GL_DrawOverlayQuad(&ov_jump, vid.width / 2,
+                               UI_MARGIN + jump_h / 2, jump_w, jump_h);
+        }
+
+        GL_DrawOverlayQuad(&ov_fire,
+                           vid.width  - FIRE_SIZE / 2 - UI_MARGIN,
+                           vid.height - FIRE_SIZE / 2 - UI_MARGIN,
+                           fire_side, fire_side);
+    }
+
+    glColor4f(1, 1, 1, 1);
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glDisable(GL_BLEND);
+    glEnable(GL_ALPHA_TEST);
+
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+}
 
 /* ===========================================================================
  * Menu-aware touch overlay
@@ -748,8 +924,10 @@ void IN_Move (usercmd_t *cmd)
     if (!mouse_avail)
         return;
 
-    mouse_x = joy_x * sensitivity.value * 2.5;
-    mouse_y = joy_y * sensitivity.value * 2.5;
+    // joy_x/joy_y are raw pixel displacement from the stick centre. Divide by
+    // ui_scale so a bigger zone means a bigger target, not extra sensitivity.
+    mouse_x = (joy_x / (float)ui_scale) * sensitivity.value * 2.5;
+    mouse_y = (joy_y / (float)ui_scale) * sensitivity.value * 2.5;
 
     //if ( (in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1) ))
     if( gesturedown )

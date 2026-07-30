@@ -111,7 +111,7 @@ Draws one solid graphics character
 */
 void M_DrawCharacter (int cx, int line, int num)
 {
-	Draw_Character ( cx + ((vid.width - 320)>>1), line, num);
+	Draw_Character ( cx + ((vid.conwidth - 320)>>1), line, num);
 }
 
 void M_Print (int cx, int cy, char *str)
@@ -136,12 +136,12 @@ void M_PrintWhite (int cx, int cy, char *str)
 
 void M_DrawTransPic (int x, int y, qpic_t *pic)
 {
-	Draw_TransPic (x + ((vid.width - 320)>>1), y, pic);
+	Draw_TransPic (x + ((vid.conwidth - 320)>>1), y, pic);
 }
 
 void M_DrawPic (int x, int y, qpic_t *pic)
 {
-	Draw_Pic (x + ((vid.width - 320)>>1), y, pic);
+	Draw_Pic (x + ((vid.conwidth - 320)>>1), y, pic);
 }
 
 byte identityTable[256];
@@ -174,7 +174,7 @@ void M_BuildTranslationTable(int top, int bottom)
 
 void M_DrawTransPicTranslate (int x, int y, qpic_t *pic)
 {
-	Draw_TransPicTranslate (x + ((vid.width - 320)>>1), y, pic, translationTable);
+	Draw_TransPicTranslate (x + ((vid.conwidth - 320)>>1), y, pic, translationTable);
 }
 
 
@@ -3018,6 +3018,44 @@ void M_Init (void)
 }
 
 
+
+#ifdef GLQUAKE
+/*
+================
+Menu magnification
+
+Quake's menus are a 320x200 design drawn at 1:1 into the 2D space. Even with
+that space already scaled down for the HUD, they read small on a 1024x768
+panel. Magnify the menu CONTENT about the screen's horizontal centre and sit it
+lower down -- the background (console or faded screen) is drawn before this and
+must keep covering the whole screen, so it stays outside the transform.
+================
+*/
+#define M_SCALE      1.4f
+#define M_DESIGN_H   200.0f
+
+static void M_PushScale (void)
+{
+	float cx = vid.conwidth * 0.5f;
+	float yo = (vid.conheight - M_DESIGN_H * M_SCALE) * 0.5f;
+	if (yo < 0) yo = 0;
+	glMatrixMode (GL_MODELVIEW);
+	glPushMatrix ();
+	/* x' = M_SCALE*x + cx*(1-M_SCALE)  keeps it centred; y' = M_SCALE*y + yo */
+	glTranslatef (cx * (1.0f - M_SCALE), yo, 0.0f);
+	glScalef (M_SCALE, M_SCALE, 1.0f);
+}
+
+static void M_PopScale (void)
+{
+	glMatrixMode (GL_MODELVIEW);
+	glPopMatrix ();
+}
+#else
+#define M_PushScale()
+#define M_PopScale()
+#endif
+
 void M_Draw (void)
 {
 	if (m_state == m_none || key_dest != key_menu)
@@ -3029,7 +3067,7 @@ void M_Draw (void)
 
 		if (scr_con_current)
 		{
-			Draw_ConsoleBackground (vid.height);
+			Draw_ConsoleBackground (vid.conheight);
 			VID_UnlockBuffer ();
 			S_ExtraUpdate ();
 			VID_LockBuffer ();
@@ -3043,6 +3081,8 @@ void M_Draw (void)
 	{
 		m_recursiveDraw = false;
 	}
+
+	M_PushScale ();
 
 	switch (m_state)
 	{
@@ -3121,6 +3161,8 @@ void M_Draw (void)
 		M_ServerList_Draw ();
 		break;
 	}
+
+	M_PopScale ();
 
 	if (m_entersound)
 	{

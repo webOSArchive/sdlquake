@@ -468,8 +468,8 @@ void Draw_Init (void)
 	gl->sh = 1;
 	gl->tl = 0;
 	gl->th = 1;
-	conback->width = vid.width;
-	conback->height = vid.height;
+	conback->width = vid.conwidth;
+	conback->height = vid.conheight;
 
 	// free loaded console
 	Hunk_FreeToLowMark(start);
@@ -643,8 +643,8 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 	unsigned short	*pusdest;
 	int				v, u;
 
-	if (x < 0 || (unsigned)(x + pic->width) > vid.width || y < 0 ||
-		 (unsigned)(y + pic->height) > vid.height)
+	if (x < 0 || (unsigned)(x + pic->width) > vid.conwidth || y < 0 ||
+		 (unsigned)(y + pic->height) > vid.conheight)
 	{
 		Sys_Error ("Draw_TransPic: bad coordinates");
 	}
@@ -712,12 +712,12 @@ Draw_ConsoleBackground
 */
 void Draw_ConsoleBackground (int lines)
 {
-	int y = (vid.height * 3) >> 2;
+	int y = (vid.conheight * 3) >> 2;
 
 	if (lines > y)
-		Draw_Pic(0, lines - vid.height, conback);
+		Draw_Pic(0, lines - vid.conheight, conback);
 	else
-		Draw_AlphaPic (0, lines - vid.height, conback, (float)(1.2 * lines)/y);
+		Draw_AlphaPic (0, lines - vid.conheight, conback, (float)(1.2 * lines)/y);
 }
 
 
@@ -787,9 +787,9 @@ void Draw_FadeScreen (void)
 	glBegin (GL_QUADS);
 
 	glVertex2f (0,0);
-	glVertex2f (vid.width, 0);
-	glVertex2f (vid.width, vid.height);
-	glVertex2f (0, vid.height);
+	glVertex2f (vid.conwidth, 0);
+	glVertex2f (vid.conwidth, vid.conheight);
+	glVertex2f (0, vid.conheight);
 
 	glEnd ();
 	glColor4f (1,1,1,1);
@@ -814,7 +814,7 @@ void Draw_BeginDisc (void)
 	if (!draw_disc)
 		return;
 	glDrawBuffer  (GL_FRONT);
-	Draw_Pic (vid.width - 24, 0, draw_disc);
+	Draw_Pic (vid.conwidth - 24, 0, draw_disc);
 	glDrawBuffer  (GL_BACK);
 }
 
@@ -844,7 +844,7 @@ void GL_Set2D (void)
 
 	glMatrixMode(GL_PROJECTION);
     glLoadIdentity ();
-	glOrtho  (0, vid.width, vid.height, 0, -99999, 99999);
+	glOrtho  (0, vid.conwidth, vid.conheight, 0, -99999, 99999);
 
 	glMatrixMode(GL_MODELVIEW);
     glLoadIdentity ();

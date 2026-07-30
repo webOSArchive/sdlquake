@@ -63,9 +63,24 @@ chmod 644 "$UDEVRULE"
 # Reload udev rules WITHOUT ever blocking the installer. The appinstaller waits
 # for this script's stdout to hit EOF, so anything that can stall must be fully
 # detached (its own fds -> /dev/null so it doesn't hold the installer's pipe).
-# The rule still takes effect either way: udev applies it on the next
-# plug/pair, and reload just makes it live for an already-attached device.
-( udevcontrol reload_rules || udevadm control --reload-rules ) </dev/null >/dev/null 2>&1 &
+#
+# reload_rules alone is NOT enough, and believing otherwise cost a debugging
+# session: it makes the rule live for FUTURE add events only -- it never
+# re-applies MODE to a device node that already exists. Install the app with a
+# controller already plugged in and, without the trigger below, that pad keeps
+# its default 0640 root:root node. The launcher-jailed game (uid 5003) then
+# cannot open it and the pad is silently dead, while anything running as root
+# still sees its events perfectly -- which is exactly what makes it look like a
+# game bug rather than a permissions one.
+#
+# udevtrigger re-fires add events for the input subsystem, which re-evaluates
+# the rules against already-attached devices. Scoped to input so we are not
+# re-triggering the whole device tree. Verified on device: chmod 640 a live pad
+# node, run this, and it returns to 0666.
+(
+    udevcontrol reload_rules || udevadm control --reload-rules
+    udevtrigger --subsystem-match=input || udevadm trigger --subsystem-match=input
+) </dev/null >/dev/null 2>&1 &
 
 # NB1: no `sync` here. Right after the installer extracted ~27 MB, a synchronous
 # sync blocks until that flushes to the (slow) eMMC and reads as a hung install;

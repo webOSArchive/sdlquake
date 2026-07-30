@@ -1628,6 +1628,31 @@ char *quitMessage [] =
 
 void M_Menu_Quit_f (void)
 {
+#ifdef GLQUAKE
+	/* TouchPad HD build: Quit quits, with no "press Y to quit" confirmation.
+	 *
+	 * That prompt is UNANSWERABLE on this device. It only accepts Y/N/Escape,
+	 * and there is no Y on a gamepad or anywhere on the touch overlay -- so
+	 * choosing Quit stranded the player in a dialog they could not answer.
+	 *
+	 * Setting key_dest BEFORE calling is load-bearing, not tidiness:
+	 * Host_Quit_f returns straight back into this function unless it sees
+	 * key_console, which would recurse until the stack ran out. Host_Quit_f
+	 * then does the real shutdown (CL_Disconnect, Host_ShutdownServer,
+	 * Sys_Quit), so the exit path is exactly the one "press Y" used to take.
+	 *
+	 * This is the ONLY way into m_quit (M_Quit_Key / M_Quit_Draw simply become
+	 * unreachable), and all three callers -- the main menu's Quit item, the
+	 * `menu_quit` command, and Host_Quit_f's own bounce for the `quit` console
+	 * command -- now quit immediately, which is the intent.
+	 *
+	 * Guarded to GLQUAKE so the long-stable software/phone build, which runs on
+	 * hardware that HAS a Y key, keeps its confirmation and stays byte-identical.
+	 */
+	key_dest = key_console;
+	Host_Quit_f ();
+	return;
+#else
 	if (m_state == m_quit)
 		return;
 	wasInMenus = (key_dest == key_menu);
@@ -1636,6 +1661,7 @@ void M_Menu_Quit_f (void)
 	m_state = m_quit;
 	m_entersound = true;
 	msgNumber = rand()&7;
+#endif
 }
 
 

@@ -31,6 +31,15 @@
 #define QUAKEHD_VERSION "0.0.0"
 #endif
 
+// The update check ships only with the TouchPad HD build. The long-stable
+// software/phone build does not compile updater.c, so it gets no-ops -- host.c
+// can then call these unconditionally without the two builds diverging.
+// (Without this, the software build fails to LINK: host.c references
+// Updater_Init/Poll/Shutdown that nothing defines. That is exactly how it broke
+// when the update check landed, and it went unnoticed because only the HD
+// target is ever built here.)
+#ifdef GLQUAKE
+
 // Kick off the check. Safe to call more than once; only the first does work.
 void Updater_Init (void);
 
@@ -40,5 +49,13 @@ void Updater_Poll (void);
 
 // Reap the worker at shutdown.
 void Updater_Shutdown (void);
+
+#else
+
+#define Updater_Init()      ((void)0)
+#define Updater_Poll()      ((void)0)
+#define Updater_Shutdown()  ((void)0)
+
+#endif
 
 #endif // UPDATER_H

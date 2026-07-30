@@ -65,7 +65,7 @@ Both scripts use paths relative to their own directory, so run them from there:
 Then, with the TouchPad connected over USB and Developer Mode on:
 
     cd ../..
-    palm-install ipks/org.webosarchive.sdlquakehd_1.1.1_armv7.ipk
+    palm-install ipks/org.webosarchive.sdlquakehd_*_armv7.ipk
 
 That is the whole install, upgrade AND uninstall procedure. Reboot afterwards
 only if the package changed something outside its own directory (the maintainer
@@ -312,3 +312,41 @@ The contact number is what matters. webOS reports each finger as its own SDL
 "mouse" index via Palm's SDL_GetMultiMouseState extension, and the gesture needs
 to see an index other than 0. If every line says "contact 0", the platform is
 collapsing the fingers and the gesture cannot work as written.
+
+
+================================================================================
+KNOWN ISSUES
+================================================================================
+
+--------------------------------------------------------------------------------
+DS4: hold off picking up the controller until the game has started
+--------------------------------------------------------------------------------
+
+If a DualShock 4 is in your hands while Quake HD is launching, your view can
+start out aimed at the floor and stay that way. Leave the controller resting on
+a flat surface until the game has finished loading and it does not happen.
+
+That is the whole workaround, and it costs nothing. If you hit it anyway, open
+the menu and start a new game, or quit and relaunch with the pad set down.
+
+For anyone picking this up later: it was investigated and NOT explained. The
+obvious suspects were ruled out on hardware. The DS4 exposes only eight axes on
+this kernel (ABS_X/Y/Z/RX/RY/RZ plus the hat) with no motion-sensor axes at all,
+and tilting the controller emits no evdev events whatsoever -- so the gyro is not
+reaching the input layer and cannot be feeding the view. Its resting values are
+also effectively identical held or flat (X=121/125, Y=124/122, Z=130/128,
+RZ=125/126, triggers pegged at 0 both ways), so the calibration Quake samples
+when it opens the device is not being poisoned either. Whatever the mechanism is,
+it is not axis inventory and not resting-value calibration. Start elsewhere.
+
+--------------------------------------------------------------------------------
+Quit does not ask for confirmation
+--------------------------------------------------------------------------------
+
+Choosing Quit from the menu exits immediately. This is deliberate. Stock Quake
+puts up a "press Y to quit" prompt, and that prompt is unanswerable on a
+TouchPad -- it only accepts Y/N/Escape, and there is no Y on a gamepad or
+anywhere on the touch overlay, so selecting Quit used to strand you in a dialog
+you could not answer.
+
+The shutdown path is unchanged; it is exactly what pressing Y used to do.

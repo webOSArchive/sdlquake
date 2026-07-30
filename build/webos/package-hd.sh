@@ -13,7 +13,7 @@ APPID="org.webosinternals.sdlquakehd"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$HERE/../.."
 SRCDIR="$HERE/hd"
-BINARY="$HERE/fbuild/webos/sdlquake.bin"
+BINARY="$HERE/fbuild/webos-gl/quakehd.bin"
 STAGING="$HERE/hd-staging"
 
 [ -f "$BINARY" ] || { echo "ERROR: $BINARY not found -- run build-webos.sh first"; exit 1; }
@@ -29,7 +29,11 @@ mkdir -p "$APPDIR" "$STAGING/CONTROL"
 # Payload: the HD app identity, plus the same runtime files the standard build
 # ships. Game data must be included -- the jail only exposes the app's own
 # directory, so it cannot read the other package's id1/.
-cp "$SRCDIR/appinfo.json" "$SRCDIR/metadata.json" "$APPDIR/"
+# NOTE: deliberately not shipping metadata.json yet. It gates the app to
+# device 101 (TouchPad), but we are still isolating why the compositor hands
+# this app a 320x480 phone-sized GL surface where the reference app gets
+# 1024x768, and the reference ships no metadata.json.
+cp "$SRCDIR/appinfo.json" "$APPDIR/"
 for item in icon.png index.html README package.properties sources.json app images id1; do
     cp -r "$REPO/$item" "$APPDIR/"
 done

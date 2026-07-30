@@ -28,6 +28,11 @@
 // Note: this controls the notification popup location, it does not flip location 0,0
 int PDL_SetOrientation(int Orientation);
 
+// MUST be called before SDL_Init for GPU/GL access -- the PDK integration layer
+// sets up the app's compositor surface here. The software build got away with
+// never calling it; an OpenGL ES context does not.
+int PDL_Init(int flags);
+
 //Opens web browser and points it to url
 int PDL_LaunchBrowser(char * url);
 

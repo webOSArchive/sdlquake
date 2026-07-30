@@ -100,40 +100,65 @@ void    VID_Init (unsigned char *palette)
 {
     int pnum;
 
-    vid.width  = vid.conwidth  = BASEWIDTH;
-    vid.height = vid.conheight = BASEHEIGHT;
-    if ((pnum = COM_CheckParm("-winsize"))) {
-        if (pnum >= com_argc - 2)
-            Sys_Error("VID: -winsize <width> <height>\n");
-        vid.width  = Q_atoi(com_argv[pnum + 1]);
-        vid.height = Q_atoi(com_argv[pnum + 2]);
-        if (!vid.width || !vid.height)
-            Sys_Error("VID: Bad window width/height\n");
-        vid.conwidth = vid.width; vid.conheight = vid.height;
-    }
-    scr_width  = vid.width;
-    scr_height = vid.height;
+    // PDL first, then orientation, then SDL -- the compositor decides the
+    // window surface's geometry when the GL context is created, so anything
+    // that affects it has to happen before SDL_SetVideoMode.
+    if (PDL_Init(0) != PDL_NOERROR)
+        Con_Printf("PDL_Init failed (continuing)\n");
+    // Deliberately NO PDL_SetOrientation: PDK apps are landscape by default,
+    // and the known-good GLES reference on this device never calls it. Asking
+    // for an orientation appears to hand back a rotated phone-geometry card.
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
         Sys_Error("VID: Couldn't load SDL: %s", SDL_GetError());
 
-    SDL_GL_SetAttribute(SDL_GL_RED_SIZE,     5);
-    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE,   6);
-    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,    5);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,  16);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    // The line that makes GL work at all on this device -- see the header note.
+    // Ask EXACTLY what the known-good GLES app on this device asks for. Two
+    // things matter and both were learned by LD_PRELOAD-logging Tux Racer:
+    //
+    //  1. CONTEXT_MAJOR/MINOR_VERSION = 1. Palm's SDL otherwise requests an
+    //     OpenGL ES *2* context, which this Adreno driver refuses with
+    //     EGL_BAD_ALLOC -- reported only as "Could not create EGL context".
+    //  2. Size 0x0 with plain SDL_OPENGL and NO fullscreen flag. Asking for an
+    //     explicit size (or passing SDL_OPENGLES/SDL_FULLSCREEN ourselves) gets
+    //     a 320x480 Palm-Pre-sized surface; desktop mode gets the panel's
+    //     native 1024x768. SDL adds the fullscreen and GLES flags itself.
+    //
+    // Everything else -- colour depth, depth buffer -- is left at SDL's
+    // defaults, which resolve to RGB 5/6/5 with a 16-bit depth buffer.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
 
-    screen = SDL_SetVideoMode(vid.width, vid.height, 0,
-                              SDL_OPENGLES | SDL_FULLSCREEN);
+    screen = SDL_SetVideoMode(0, 0, 0, SDL_OPENGL);
     if (!screen)
         Sys_Error("VID: Couldn't set GL video mode: %s\n", SDL_GetError());
 
-    if (PDL_SetOrientation(PDL_ORIENTATION_LEFT) != PDL_NOERROR)
-        Con_Printf("PDL: failed to set orientation\n");
+    // Render at whatever the compositor actually gave us, rather than assuming.
+    // -winsize still overrides, for experimenting with lower internal
+    // resolutions.
+    vid.width  = vid.conwidth  = screen->w;
+    vid.height = vid.conheight = screen->h;
+    if ((pnum = COM_CheckParm("-winsize")) && pnum < com_argc - 2) {
+        int w = Q_atoi(com_argv[pnum + 1]), h = Q_atoi(com_argv[pnum + 2]);
+        if (w > 0 && h > 0) {
+            vid.width = vid.conwidth = w;
+            vid.height = vid.conheight = h;
+        }
+    }
+    scr_width  = vid.width;
+    scr_height = vid.height;
+    glViewport(0, 0, vid.width, vid.height);
+
     PDL_CustomPauseUiEnable(PDL_FALSE);
+
+    // Report what the compositor ACTUALLY gave us. The card is portrait
+    // (LunaSysMgr logs 768x1024), so if the surface comes back portrait while
+    // we render assuming landscape, the picture is sideways.
+    {
+        GLint vp[4] = {0,0,0,0};
+        glGetIntegerv(GL_VIEWPORT, vp);
+        Con_Printf("GL surface: SDL says %dx%d, viewport %dx%d, wanted %dx%d\n",
+                   screen->w, screen->h, vp[2], vp[3], vid.width, vid.height);
+    }
 
     vid.aspect = ((float)vid.height / (float)vid.width) * (320.0 / 240.0);
     vid.numpages = 2;

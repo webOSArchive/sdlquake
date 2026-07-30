@@ -51,6 +51,15 @@ byte    drawoverlay = 1;
 byte    gesturedown = 0;
 extern int in_impulse;
 
+// Two-finger tap -> Escape. webOS reports each finger as its own SDL "mouse"
+// index (Palm's SDL_GetMultiMouseState extension), so event.button.which is the
+// contact id. Only contacts in the BLANK MIDDLE of the screen count: holding the
+// move stick while tapping fire is two simultaneous contacts and must never be
+// mistaken for this gesture.
+#define MAX_CONTACTS 8
+static byte contact_neutral[MAX_CONTACTS];
+static byte twofinger_armed = 1;
+
 int     jumping_counter = 0;
 #define JUMP_FRAME_COUNT 6
 int     fire_counter = 0;
@@ -486,6 +495,70 @@ void D_DrawUIOverlay (void)
 static int menu_btn_key = 0;    // menu key currently held by a touch button
 static int menu_joy_dir = 0;    // last arrow emitted by the joystick-as-dpad
 
+/* ---------------------------------------------------------------------------
+ * Two-finger tap -> Escape
+ *   Fills the one hole in touch-only play: in a live game the top strip is
+ *   jump, so there was no touch route to the menu (no save, load or quit
+ *   without a controller or keyboard).
+ * ------------------------------------------------------------------------ */
+
+// The blank middle of the screen: not the jump strip, not the move stick, not
+// fire. Restricting the gesture to dead space is what keeps move-and-fire --
+// two contacts at once, the normal way to play -- from opening the menu.
+static qboolean Touch_IsNeutral( int x, int y )
+{
+    if ( y < JUMP_SIZE )
+        return false;
+    if ( y > vid.height - JOY_SIZE  && x < JOY_SIZE )
+        return false;
+    if ( y > vid.height - FIRE_SIZE && x > vid.width - FIRE_SIZE )
+        return false;
+    return true;
+}
+
+static void Touch_TrackContact( SDL_Event *ev )
+{
+    int which = ev->button.which;
+    int i, n;
+
+    if ( which < 0 || which >= MAX_CONTACTS )
+        return;
+
+    if ( ev->type == SDL_MOUSEBUTTONDOWN )
+        contact_neutral[which] = Touch_IsNeutral( ev->button.x, ev->button.y );
+    else
+        contact_neutral[which] = 0;
+
+    for ( i = n = 0; i < MAX_CONTACTS; i++ )
+        n += contact_neutral[i];
+
+    // printf, not Con_Printf: log only, never on screen. Verified on hardware
+    // that webOS really does report a second finger as its own contact id
+    // (the log showed "contact 1"), so this is now only needed when someone
+    // reports the gesture not working -- enable with `developer 1`, e.g. from
+    // id1/autoexec.cfg.
+    if ( developer.value )
+        printf( "touch: contact %d %s at %d,%d -- %d neutral down\n",
+                which, ev->type == SDL_MOUSEBUTTONDOWN ? "down" : "up",
+                ev->button.x, ev->button.y, n );
+
+    // Re-arm only once every finger has left the dead space, so a wobbling
+    // 2->1->2 contact count cannot toggle the menu repeatedly.
+    if ( n < 2 )
+    {
+        if ( n == 0 )
+            twofinger_armed = 1;
+        return;
+    }
+
+    if ( !twofinger_armed )
+        return;
+    twofinger_armed = 0;
+
+    Key_Event( K_ESCAPE, true );
+    Key_Event( K_ESCAPE, false );
+}
+
 static void Menu_TouchDown( int x, int y )
 {
     int key = 0;
@@ -749,6 +822,7 @@ void Sys_SendKeyEvents(void)
                 break;
 
             case SDL_MOUSEBUTTONUP:
+                Touch_TrackContact( &event );
                 if ( key_dest != key_game )
                 {
                     Menu_TouchUp();
@@ -764,6 +838,11 @@ void Sys_SendKeyEvents(void)
 
                 //fall through
             case SDL_MOUSEBUTTONDOWN:
+
+                // Guarded: SDL_MOUSEBUTTONUP falls through into this case, and
+                // it has already tracked itself above.
+                if ( event.type == SDL_MOUSEBUTTONDOWN )
+                    Touch_TrackContact( &event );
 
                 if ( key_dest != key_game )
                 {

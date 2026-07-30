@@ -117,9 +117,9 @@ evdev button names and should work without configuration.
 TOUCH
 --------------------------------------------------------------------------------
 
-The touch overlay has three zones. Only two of them are drawn, which is the
-single biggest source of confusion -- read "Jump" below before deciding it is
-broken.
+The touch overlay has four zones and only draws two of them, which is the single
+biggest source of confusion. The two you cannot see are Jump and Menu -- read
+their entries below before deciding either one is broken.
 
   Zone            Where                        Drawn?
   --------------  ---------------------------  ---------------------------------
@@ -127,6 +127,8 @@ broken.
   Fire            Bottom-RIGHT, 320x320 px     Yes, always
   Jump            TOP strip, full width,       No -- see below
                   top 240 px of the screen
+  Menu (Escape)   Two fingers anywhere in      No -- it is the leftover
+                  the blank MIDDLE             space between the zones above
 
   Move            Press the on-screen stick and drag. It is analog: how far you
                   drag is how fast you move. There is a small dead zone at the
@@ -137,6 +139,11 @@ broken.
   Jump            *** Slide, do not tap. ***
                   Put a finger anywhere along the top of the screen and MOVE it
                   slightly. A perfectly stationary tap does nothing at all.
+
+  Menu            *** Two fingers, in the MIDDLE of the screen. ***
+                  Sends Escape: opens the menu from a game or from the opening
+                  demo, and backs out when a menu is already open. This is the
+                  one gesture to remember -- it is the same everywhere.
 
 QUIRK 1 -- the jump button is invisible, and it needs a slide.
 
@@ -149,27 +156,29 @@ QUIRK 1 -- the jump button is invisible, and it needs a slide.
   jump fires from SDL_MOUSEMOTION, and a tap that never moves emits no motion
   event. Touch the top of the screen and slide a little and it jumps every time.
 
-QUIRK 2 -- to get from the opening demo into the menu, tap near the TOP of the
-screen (usually twice).
+QUIRK 2 -- aim for the MIDDLE of the screen to open the menu, not the top.
 
-  There is no dedicated "open menu" touch gesture. What actually happens is a
-  side effect worth knowing, because it explains the double tap:
+  The natural instinct is to tap where the menu itself appears, which is high up
+  under the Quake logo. That does not work reliably, and the reason is Quirk 1:
+  the top 240 px is the jump strip, and fingers landing there are ignored by the
+  menu gesture on purpose. Put both fingers around the middle of the panel --
+  below the logo, above the on-screen stick -- and it opens first time.
 
-    1. Your tap lands in the invisible jump zone -- and the Quake logo and menu
-       sit high on the screen, so aiming at "where the menu should be" tends to
-       put your finger in the top 240 px without meaning to.
-    2. Jump sends the Space key.
-    3. While the attract-mode demo is playing, Quake opens the menu on ANY
-       printable keypress (keys.c: `if (cls.demoplayback && down &&
-       consolekeys[key] && key_dest == key_game) M_ToggleMenu_f();`), and Space
-       counts. So the jump gesture opens the menu.
+  The safe area is everything except the three control zones, so the centre of
+  the screen and the bottom-centre strip between the stick and fire both work.
 
-  The first tap often does nothing because it did not move enough to emit a
-  motion event; the second tap lands a few pixels off the first and does. Hence
-  "double tap". A single tap-and-slide along the top edge works the first time.
+  The gesture deliberately ignores fingers on the controls, because moving while
+  firing is already two simultaneous contacts -- that is just normal play, and it
+  must never pop the menu open mid-firefight.
 
-  Note this trick only works during the demo. Once you are actually in a level,
-  Space just jumps -- see the limitation below.
+  If you have used older builds, you may know a trick where double-tapping near
+  the top of the title screen brought up the menu. That still works, but it was
+  always an accident rather than a feature: the tap landed in the invisible jump
+  zone, jump sends Space, and during the attract demo Quake opens the menu on any
+  printable keypress (keys.c: `if (cls.demoplayback && down && consolekeys[key]
+  && key_dest == key_game) M_ToggleMenu_f();`). It needed two taps because the
+  first often did not move far enough to emit a motion event. It also only ever
+  worked during the demo. Use the two-finger tap instead -- it works everywhere.
 
 Once a menu IS open, the overlay is reinterpreted so a touch-only player can
 navigate it:
@@ -179,16 +188,21 @@ navigate it:
   Move stick (bottom-left)   Arrow keys -- one step per push, re-arming when you
                              return the stick toward centre
 
-LIMITATION -- you cannot open the menu by touch during gameplay.
-
-  In a live game there is no touch gesture for Escape; the top strip is jump.
-  To reach the menu mid-game (to save, load, or quit) you need one of:
+Escape is also available on the other input methods, if you have them attached:
 
     Game controller   Start
     Keyboard          Escape
 
-  This is a real gap for touch-only players rather than an intentional design,
-  and it is the first thing to fix if you are extending the overlay.
-
 The overlay can be hidden entirely with orange + '@' on a hardware keyboard.
 There is no touch gesture for this.
+
+If the two-finger tap ever fails to register on some other device, set
+`developer 1` (in id1/autoexec.cfg, say) and every touch contact is logged to
+/media/internal/quakehd.log as:
+
+    touch: contact 1 down at 600,420 -- 2 neutral down
+
+The contact number is what matters. webOS reports each finger as its own SDL
+"mouse" index via Palm's SDL_GetMultiMouseState extension, and the gesture needs
+to see an index other than 0. If every line says "contact 0", the platform is
+collapsing the fingers and the gesture cannot work as written.

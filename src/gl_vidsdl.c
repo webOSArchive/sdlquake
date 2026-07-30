@@ -167,8 +167,8 @@ void    VID_Init (unsigned char *palette)
     {
         GLint vp[4] = {0,0,0,0};
         glGetIntegerv(GL_VIEWPORT, vp);
-        Con_Printf("GL surface: SDL says %dx%d, viewport %dx%d, wanted %dx%d\n",
-                   screen->w, screen->h, vp[2], vp[3], vid.width, vid.height);
+        Con_Printf("GL surface %dx%d, viewport %dx%d\n",
+                   screen->w, screen->h, vp[2], vp[3]);
     }
 
     vid.aspect = ((float)vid.height / (float)vid.width) * (320.0 / 240.0);
@@ -277,6 +277,13 @@ void GL_BeginRendering (int *x, int *y, int *width, int *height)
     *x = *y = 0;
     *width  = scr_width;
     *height = scr_height;
+
+    // Force the status bar to redraw every frame. Sbar_Draw() stops redrawing
+    // once it has done so vid.numpages times, which is a software-renderer
+    // optimisation that assumes each buffer keeps the HUD pixels it was given.
+    // A GL back buffer's contents are undefined after a swap, and this panel is
+    // triple-buffered, so the HUD flashed in and out as the buffers rotated.
+    Sbar_Changed();
 }
 
 void GL_EndRendering (void)

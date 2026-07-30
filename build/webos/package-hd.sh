@@ -29,10 +29,15 @@ mkdir -p "$APPDIR" "$STAGING/CONTROL"
 # Payload: the HD app identity, plus the same runtime files the standard build
 # ships. Game data must be included -- the jail only exposes the app's own
 # directory, so it cannot read the other package's id1/.
-# NOTE: deliberately not shipping metadata.json yet. It gates the app to
-# device 101 (TouchPad), but we are still isolating why the compositor hands
-# this app a 320x480 phone-sized GL surface where the reference app gets
-# 1024x768, and the reference ships no metadata.json.
+# DO NOT ship metadata.json. Gating with {"version":1,"devices":[101]} -- 101
+# being the TouchPad -- puts the app into PHONE COMPATIBILITY mode: the
+# compositor then hands it a 320x480 surface instead of the panel's native
+# 1024x768. Verified by A/B on the same binary, dropping the file in and out:
+#   with metadata.json    -> GL surface 320x480
+#   without metadata.json -> GL surface 1024x768
+# The known-good GLES reference on this device (Tux Racer) ships none either.
+# The app is TouchPad-only by nature (it needs the GPU and the resolution);
+# gating, if wanted, needs some other mechanism.
 cp "$SRCDIR/appinfo.json" "$APPDIR/"
 for item in icon.png index.html README package.properties sources.json app images id1; do
     cp -r "$REPO/$item" "$APPDIR/"

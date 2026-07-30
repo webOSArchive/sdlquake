@@ -48,8 +48,13 @@ byte		conback_buffer[sizeof(qpic_t) + sizeof(glpic_t)];
 qpic_t		*conback = (qpic_t *)&conback_buffer;
 
 int		gl_lightmap_format = 4;
-int		gl_solid_format = 3;
-int		gl_alpha_format = 4;
+// GLES 1.1 requires glTexImage2D's internalformat to EQUAL its format and to be
+// a real enum -- the desktop shorthand of 3/4 (component counts) is
+// GL_INVALID_VALUE here, which silently fails every texture upload and renders
+// the whole world untextured white. All of Quake's uploads hand over RGBA data,
+// so both formats are GL_RGBA.
+int		gl_solid_format = GL_RGBA;
+int		gl_alpha_format = GL_RGBA;
 
 int		gl_filter_min = GL_LINEAR_MIPMAP_NEAREST;
 int		gl_filter_max = GL_LINEAR;

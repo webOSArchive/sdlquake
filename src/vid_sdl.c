@@ -11,8 +11,11 @@ viddef_t    vid;                // global video state
 unsigned short  d_8to16table[256];
 
 // The original defaults
-#define    BASEWIDTH    480
-#define    BASEHEIGHT   320
+// Native TouchPad panel resolution. This tree targets the tablet only -- the
+// phone build is a separate, long-stable release. (Was 480x320, the Palm Pre's
+// screen, which the compositor then upscaled 2.1x.)
+#define    BASEWIDTH    1024
+#define    BASEHEIGHT   768
 
 #define    FIRE_SIZE    160
 #define    JUMP_SIZE    120

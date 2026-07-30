@@ -380,8 +380,53 @@ int main (int c, char **v)
 //	signal(SIGFPE, floating_point_exception_handler);
 	signal(SIGFPE, SIG_IGN);
 
+#ifdef __webos__
+	// A launcher-launched PDK app's stdout/stderr reach neither a terminal nor
+	// /var/log/messages -- they are lost. Redirect them to writable storage
+	// first thing, before anything that can fail, so Con_Printf output (GL
+	// renderer string, -frametime pacing, Sys_Error text) is recoverable.
+	// /media/internal is bind-mounted rw into the jail.
+	{
+		FILE *lf = fopen("/media/internal/quakehd.log", "w");
+		if (lf) {
+			dup2(fileno(lf), 1);
+			dup2(fileno(lf), 2);
+			fclose(lf);
+			setvbuf(stdout, NULL, _IONBF, 0);
+			setvbuf(stderr, NULL, _IONBF, 0);
+		}
+	}
+
+	// Run from the app's own directory. The launcher jail chdirs elsewhere, and
+	// Quake resolves id1/ relative to the working directory. Self-locate via
+	// /proc/self/exe rather than argv[0], which the launcher does not set to a
+	// usable path. Doing this in the binary means "main" in appinfo.json can BE
+	// the binary -- with a shell wrapper the running exe is a different path
+	// than the one in the app's LS2 role file, so the bus rejects it
+	// ("No role file for executable ... .bin") and PDL cannot register.
+	{
+		char exe[512];
+		int n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+		if (n > 0) {
+			char *slash;
+			exe[n] = 0;
+			slash = strrchr(exe, '/');
+			if (slash) { *slash = 0; chdir(exe); }
+		}
+	}
+
+	// 32 MB, not the stock 8 MB. At 1024x768 the video buffers alone take over
+	// half of an 8 MB heap -- a 1.5 MB z-buffer plus a 2.7 MB surface cache
+	// (both scale with pixel count; at 480x320 they were 0.3 MB and 0.8 MB) --
+	// so the demo would run but loading a real map failed in Hunk_Alloc and
+	// Quake exited via Sys_Error. The device has ~940 MB.
+	parms.memsize = 32*1024*1024;
+#else
 	parms.memsize = 8*1024*1024;
+#endif
 	parms.membase = malloc (parms.memsize);
+	if (!parms.membase)
+		Sys_Error ("Could not allocate %d MB heap", parms.memsize >> 20);
 	parms.basedir = basedir;
 	parms.cachedir = cachedir;
 

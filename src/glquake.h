@@ -1,3 +1,9 @@
+// Include guard added for the webOS GL build: quakedef.h pulls this in when
+// GLQUAKE is defined, so any file that also includes it directly would get
+// every struct and enum twice.
+#ifndef GLQUAKE_H
+#define GLQUAKE_H
+
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -27,8 +33,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <windows.h>
 #endif
 
+#ifdef __webos__
+// The TouchPad has OpenGL ES 1.1, not desktop GL. gles_compat.h pulls in
+// <GLES/gl.h> and restores what ES removes (immediate mode, GL_QUADS,
+// GL_POLYGON, glOrtho/glFrustum/glDepthRange spellings). There is no GLU.
+#include "gles_compat.h"
+#else
 #include <GL/gl.h>
 #include <GL/glu.h>
+#endif
 
 void GL_BeginRendering (int *x, int *y, int *width, int *height);
 void GL_EndRendering (void);
@@ -249,3 +262,5 @@ extern qboolean gl_mtexable;
 
 void GL_DisableMultitexture(void);
 void GL_EnableMultitexture(void);
+
+#endif // GLQUAKE_H

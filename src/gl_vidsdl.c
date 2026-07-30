@@ -81,14 +81,25 @@ const char     *gl_extensions;
 // so point them straight at it. glesMultiTexCoord2f feeds the immediate-mode
 // buffers (see gles_compat.c) rather than the driver, because coordinates
 // inside a glBegin/glEnd batch must land in the vertex arrays.
+// GLQuake selects texture units with the 1990s SGIS enums (TEXTURE0_SGIS =
+// 0x835E, TEXTURE1_SGIS = 0x835F), which are NOT the GLES/ARB values
+// (GL_TEXTURE0 = 0x84C0). Passing them straight through makes every
+// glActiveTexture fail GL_INVALID_ENUM and sends the lightmap coordinates to
+// the wrong unit, which renders world surfaces white. Translate them.
+static GLenum GLES_TexUnit (GLenum sgis)
+{
+    if (sgis == TEXTURE1_SGIS || sgis == GL_TEXTURE1) return GL_TEXTURE1;
+    return GL_TEXTURE0;
+}
 static void GLES_SelectTexture (GLenum target)
 {
-    glActiveTexture(target);
-    glClientActiveTexture(target);
+    GLenum unit = GLES_TexUnit(target);
+    glActiveTexture(unit);
+    glClientActiveTexture(unit);
 }
 static void GLES_MTexCoord2f (GLenum target, GLfloat s, GLfloat t)
 {
-    glesMultiTexCoord2f(target, s, t);
+    glesMultiTexCoord2f(GLES_TexUnit(target), s, t);
 }
 
 /*
